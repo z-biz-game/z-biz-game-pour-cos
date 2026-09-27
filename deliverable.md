@@ -331,3 +331,24 @@ src="js/main.js"
    `js/**/*.js`、`tools/*.mjs`、`test/*.mjs`、`server.cjs`、`electron/main.cjs` 全部读进来，
    对每个 `export const|function NAME` 找除声明处以外的引用 —— **0 个未接线导出**。
    方法只是按名字的文本可达性，不是真正的调用图（同名会互相打掩护），但足以支持"没有幽灵功能"这句。
+
+## 线上验收（GitHub Pages，主代理 2026-09-27 实抓）
+
+发布 sha `a307877`，CI trigger `f6d8e41` → Actions `success`。
+
+主代理门禁（与上面作者自述相互独立的一次复跑）：`npm run check` rc=0；node **84 / 0 fail**；
+浏览器 **130 / 0 fail** 且 `=== ALL GREEN ===` rc=0，逐段为
+`@boot 18`、`@play 22`、`@routes 26`、`@save 24`、`@pointer 40`，每段 `fail: []`。
+
+| 资源 | 结果 |
+| --- | --- |
+| `/`（index.html） | 200 / 3,013 B |
+| `js/main.js` | 200 / 17,594 B |
+| `css/game.css` | 200 / 7,463 B |
+| `js/data/lots.js` | 200 / 23,631 B |
+| `<title>` | 与 README 首行一致 |
+
+`@pointer` 那 40 条是这次新加的最大一段：它用 CDP `Input.dispatchMouseEvent` 真实点击与拖拽走完整条
+认证解，因此上面"按名字的文本可达性"那句话所支持的"没有幽灵功能"，在交互层有了一条不依赖文本比对的证据。
+诚实边界：本节的浏览器数字来自本机 headless Chrome 的实跑与线上资源的 HTTP 抓取，
+未做逐帧视觉截图比对，仓库仍保持 0 个二进制资产。
