@@ -1,0 +1,40 @@
+{
+  "name": "pour",
+  "version": "1.0.0",
+  "description": "倒水量 Pour — 浏览器原生量水 puzzle. 每题最少次数由广度优先搜索量出, 可解性由 Bézout 定理独立判定, 关卡在构建期生成并复验.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5190",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "balance": "node test/balance.mjs",
+    "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run unit",
+    "verify": "bash tools/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "water-jug",
+    "die-hard",
+    "bfs",
+    "bezout",
+    "number-theory",
+    "procedural",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.pour",
+    "productName": "Pour",
+    "mac": { "category": "public.app-category.puzzle-games" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}

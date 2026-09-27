@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The model, the search, the number theory and the shipped pool are all plain ES modules:
+  # this job needs no install step, because `dependencies` and `devDependencies` are both {}
+  # (test/shape.test.mjs fails the build if that ever stops being true).
+  #
+  # Two rows are the reason the job exists:
+  #   * test/bezout.test.mjs — the solvency verdict is re-derived by a hand-written subtractive
+  #     Euclid and by an independent reachable-set walk, and cross-checked against the BFS on
+  #     606 / 525 / 486 cases;
+  #   * test/library.test.mjs — re-solves every line of js/data/lots.js from its serialised
+  #     spec, so a hand-edited par, a stale bake or a deleted puzzle fails the build.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Keep this glob list byte-identical to `npm run check` in package.json — shape.test.mjs
+      # asserts the two cover the same files, and a file that only CI checks is a file nobody
+      # checks locally.
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Suites
+        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+
+  # The page is only proven by driving a real Chrome with real pointer events: the bucket hit
+  # test, the "a move that changes nothing costs nothing" rule, the clamped over-drag and the
+  # save file all live behind `window.pour`. SKIP_UNIT=1 because the job above already ran them.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 240
+        run: bash tools/verify.sh

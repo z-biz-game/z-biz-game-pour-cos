@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No bundler, no install, no build step: the site is a file copy. `index.html` reaches
+      # exactly three paths — itself, css/ and js/ — so those are the only things that go into
+      # the artifact. Deliberately excluded: server.cjs and electron/ (they import node:
+      # modules and would 404 anyway), tools/ and test/ (build-time only), package.json,
+      # and the .github directory. Every puzzle number the page prints already lives in
+      # js/data/lots.js, which is a checked-in source file, not a build product.
+      - name: Assemble static site
+        run: |
+          mkdir _site
+          cp index.html _site/
+          cp -r css js _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

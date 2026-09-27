@@ -1,0 +1,150 @@
+# 倒水量 · POUR
+
+几只没有刻度的桶、一个水龙头、一个下水道：量出指定的那个数。经典"倒水问题"（Die Hard 3 那类）的
+浏览器实现，它和纸面版本的关键区别有两条，而且这两条互相独立：
+
+**"最少几次"是广度优先搜索在 `∏(cᵢ+1)` 状态图上量出来的精确最短路径；
+"这个数到底量不量得出"是数论定理（Bézout）判出来的。两个机制互不打分——
+难度数字不由算出它的那套代码来判定题，可解性也不由一次没跑完的搜索来否决。**
+
+- **谁算了屏幕上的每个数字**：`js/core/jug.js` 只有模型（三种动作、编码、后继枚举、合法性），
+  `js/core/solve.js` 的分层 BFS 产出 `par`（最少次数）、`solutions`（**同层最短路线条数**）、
+  `explored`；`js/core/solve.js` 的 `census()` 另出一张可达图，产出 `states`（可达位置数）与 `depth`。
+  面板上"最少 N 次 / 最优走法 M 条 / 可游荡 K 个状态"读的就是这三个数，它们全部在构建期由
+  `tools/bake.mjs` 量好、写进 `js/data/lots.js`，`test/library.test.mjs` 每次 CI 逐行从序列化后的
+  桶配置**重解一遍**再比对。第三个机制 `js/core/theorem.js` 只回答"可解吗"：
+  `gcd(caps) | need` 且 `need ≤ 目标桶容量`。它给出的必要条件是免费的，所以生成器先用它筛、
+  再让 BFS 决定，两把尺子的对账是 `test/bezout.test.mjs`（见下）。
+- 零依赖、零美术、零打包器：只有 `index.html` + `css/` + `js/`，桶、水面、龙头、下水道全部由
+  `js/view.js` 用 canvas 2D 路径画出来，二进制资产 0 个。
+- 63 关已烘焙并逐行复验，四档带的区间是从实测 `par` 直方图里定的：默认台架 1 280 次抽样 / 926 道题，
+  按规格 `pour.md §3` 的"5000 题"口径放大到 7 310 次抽样 / 5 438 道题再量一遍，三档低难度的
+  `median / maxStates` 一个字没变（`node test/balance.mjs`，两次输出都在 DESIGN.md §4.2）。
+- 战役 / 每日 / 随机 / 分享链接四种入口，同一个 id 或同一个 token 在任何设备上都是同一道题。
+- 本地存档（localStorage），无账号、无网络请求、可离线。
+
+## 跑起来
+
+```bash
+node server.cjs            # http://127.0.0.1:5180/（ES module 需要一个 origin，file:// 会被 CORS 挡掉）
+npm run unit               # 八个 node 套件：84 行断言、871 条 eq/ok
+bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标拖动验收（130 行断言）
+node test/balance.mjs      # 生成器实测：接受率、逐档拒绝原因、最大状态数
+node tools/bake.mjs        # 重新出题 + 复验，重写 js/data/lots.js（本机 7.5–7.8 秒）
+npx electron .             # 桌面壳（需自行 npm i -D electron，本仓不装）
+```
+
+## 玩
+
+- 画面上是几只空桶，顶部一个水龙头、右下下水道。**只有三个动作**：
+  桶拖到龙头 = `fill`、拖到下水道 = `dump`、桶拖到桶 = `pour`（倒到源桶空或目标桶满为止）。
+  从龙头往桶上拖是同一个 `fill` 的反向写法。**没有半倒**：没刻度的桶认不出"一半"是什么状态，
+  一旦允许，状态图就不再是有限个位置，本仓每个数字都会失去意义。
+- 目标：让面板指定的那只桶恰好装着 `need`。模型也支持"任一只"的多目标口径
+  （`target` 可以是数组，`isGoal` 与 BFS 都按多目标算 par），但 63 道里没有一道用到。
+- **零变化的动作不计步**：满桶再 fill、空桶再 dump、往已满的桶里倒，都不算一步，也不改一滴水
+  （`js/core/game.js` 的 `legal()` 与搜索入队规则是同一个判断，玩家计数器和 BFS 不会各说一套）。
+- 拖过头（指针越过桶沿）意图保留、水量钳在沿口；拖回起手那只桶 = 取消。
+- 面板实时印 `次数 / 最少 / 最优走法 / 可游荡状态 / 容量表 / #/lot/<id>`。提示 `h` 只走烘焙好的那条
+  认证路线，一旦玩家离开路线它就诚实地说"不在认证路线上"，**不会**现场重搜；撤销 `u`、重开 `r`。
+- 打平"最少" = ★★★「分毫不差」，多花 1–3 次 = ★★「尚有余量」，再多 = ★「总算量出」
+  （`js/core/game.js:101`）。用过提示就失去完美档。
+
+## 这几张表是谁算的
+
+```bash
+node tools/bake.mjs        # 出题 + 复验 + 打印实测；本机跑 7.5 秒，两次连跑产物逐字节相同
+```
+
+```
+wrote 63 puzzles (drip:16 measure:16 blend:14 decant:17) -> js/data/lots.js in 7.5s
+tier      n   par          per-par                              solutions           states   drawn  accept    rejections
+drip      16  4-5 med=4.5  4x8 5x8                          sum=40 avg=2.5    448      405    4.94%     bandLow 119, bandHigh 108, gcdReject 63, needIsACapacity 62, pureTransfer 33
+measure   16  6-7 med=6.5  6x8 7x8                          sum=211 avg=13.2  4710     842    2.38%     bandLow 494, needIsACapacity 115, gcdReject 115, bandHigh 98
+blend     14  8-11 med=9.3 8x4 9x4 10x4 11x2                sum=1097 avg=78.4 726     23559   0.10%     bandLow 15664, gcdReject 3456, needIsACapacity 3376, bandHigh 1039, gaveUp 8
+decant    17  12-20 med=15.6 12x3 13x2 14x3 16x3 18x3 20x3  sum=4632 avg=272.5 484   281217   0.01%     bandLow 209010, needIsACapacity 31846, gcdReject 31058, bandHigh 5805, spaceOverLimit 3474, gaveUp 109
+```
+
+`accept` 这一列是**按 par 名额凑题**的接受率（`bake.mjs` 给每个 par 值轮询取样，再用
+`signature()` 把"同一组容量 + 同一目标 + 同一个 need"的重复题丢掉），所以名额越大越难凑
+——`blend` 那档凑到 14 道就停了（`warn: blend only reached 14 puzzles across pars 8,9,10,11`）。`node test/balance.mjs` 量的是另一件
+事——"随便抽一道题要抽多少次才中"，下面是本机原样输出（23.3 秒）：
+
+```
+tier      band    drawn  accepted  rate     median  maxStates  gate  ms     cut  rejections
+drip      4-5     160    160      100.00%  4.5     616        0     42     no   bandLow 988, bandHigh 744, gcdReject 588, needIsACapacity 372, pureTransfer 190
+measure   6-7     160    160      100.00%  6.5     8736       0     183    no   bandLow 4013, needIsACapacity 1040, gcdReject 1003, bandHigh 743
+blend     8-11    320    270      84.38%   9.2     1144       0     3031   no   bandLow 115576, needIsACapacity 25302, gcdReject 24943, bandHigh 7997, gaveUp 50
+decant    12-20   640    336      52.50%   14.9    168        0     20001  yes  bandLow 595529, needIsACapacity 91510, gcdReject 89379, bandHigh 18521, spaceOverLimit 9871, gaveUp 304, truncated 21, timeout 1
+totals: drawn 1280, accepted 926, 23.3s
+```
+
+`decant` 那行的 `cut = yes`：该档被 20 秒预算（`TIER_MS`）在 par 20 处截断，所以它的 `drawn /
+accepted / median` 随机器负载漂移（同一次会话里另一跑是 682→378、55.43%、中位 15.5）。
+前三档两次逐位相同。结构量与计时量的分别见 DESIGN.md §4。
+
+已发布的 63 关本身（`js/data/lots.js`，md5 `b56070022ac55f9d66a1fde3adcb018e`）：
+`par` 区间 4–20，可达状态最大 4 710（`measure-12`，桶 `[4,8,11,12]`），最短路线条数最大 3 090
+（`decant-04`，桶 `[5,9,14]` 量 7），最大容量 14。任何一行手改一个数字，`test/library.test.mjs` 就红。
+
+定理那一头的对账由 `test/bezout.test.mjs` 现场跑（`node test/bezout.test.mjs`）：
+`a,b ∈ 1..9`、`t ∈ 0..max(a,b)` 共 **606 问**，其中非零 **525 问**对应"任一只桶"这个目标定义，
+命名目标桶那一路是 **486 问**，三桶 6×6 抽样另有 **197 问（非零 161）**；
+三路全部 **0 处不一致**，参与对账的 `gcd` 是测试里手抄的减法版本、可达集是独立写的字符串键 BFS，
+**都不 import `js/core/theorem.js`**。规格 `pour.md §0` 里的 525/486 因此在仓里是一条会红的断言，
+而不是一句话。
+
+## 验收
+
+`bash tools/verify.sh` 一条命令跑完两层：
+
+- **node 层 84 行 / 871 条**：`bezout`(8) 定理与搜索三路对账、`jug`(14) 模型与校验器负例、
+  `solve`(9) 3-5-4 手算 par=6 + 深度 5 穷举反证 + 多目标 par + 零变化不入队 + 预算与截止、
+  `make`(8) 难度带形状与确定性、`library`(7) 逐行复解、`game`(13) 计数与评星、
+  `storage`(16) 三态退化与单调性、`shape`(9) 零依赖/零二进制/core 无 DOM。
+- **浏览器层 130 行**：`tools/playtest.mjs` 起真实 headless Chrome，`@boot`(18) 画布真的排版并
+  画出像素、`@play`(22) 通关/评星/提示/计数、`@routes`(26) 四种路由与钳制、`@save`(24)
+  localStorage 落盘与两次点击清档、`@pointer`(40) **派发真实 `Input.dispatchMouseEvent`**
+  把 `drip-01`（par 4）整条认证解拖到通关，并断言：原地按下去不动、往已满的桶里倒不计步、
+  倒一只空桶不计步、抽干一只空桶不计步、拖回起手那只桶=取消、越过桶沿的过拉被钳在沿口，
+  以及一条容量不变式。
+
+## 文件地图
+
+```
+index.html            壳：顶栏 / 画布 / 右侧面板 / 通关卡（含 data: 的 favicon，防 404 污染 console）
+css/game.css          全部样式，一个文件
+js/core/jug.js        模型：三种动作、混合进制编码、后继枚举、规格校验、状态空间门槛（无 DOM）
+js/core/theorem.js    数论判据：gcd / gcdAll / canMeasureAny / canMeasureAt / reachableAmounts
+js/core/solve.js      分层 BFS：par / solutions / explored / truncated + census() 可达图
+js/core/game.js       一局：legal/act/undo/hint/onRoute/grade，运行期唯一的合法性来源（不搜索）
+js/core/make.js       难度带 + 拒绝采样出题（只在构建期被 import）
+js/core/library.js    查表：战役 / 每日 / 随机 / id + stats()
+js/core/storage.js    localStorage 存档，无 window 或存储被拒时退化成内存
+js/core/rng.js        FNV-1a 种子哈希 + mulberry32
+js/data/lots.js       构建期产物：TIERS_META + 63 行带实测 par / solutions / states / route 的题
+js/view.js            canvas 2D 绘制与指针手势，不判合法性（只问 game.legal）
+js/main.js            路由、DOM、存档写入、window.pour 测试钩子
+server.cjs            零依赖静态服务器          electron/main.cjs  桌面壳
+tools/bake.mjs        出题 → 复验 → 写 lots.js，并打印实测表
+tools/playtest.mjs    零依赖 CDP 驱动，真实鼠标键盘事件      tools/verify.sh  一次性验收门
+tools/harness.mjs     微型测试框架，node 与浏览器套件输出形状一致
+test/                 八个套件 + 手算 fixture.mjs + 难度台架 balance.mjs
+```
+
+## 已知边界
+
+- **最多 4 只桶、单个容量 ≤ 60、`∏(cᵢ+1) ≤ 20000`**（`js/core/jug.js:19-21`）。门槛不是建议：
+  它是"构建期能穷尽、序列化后还能重解一遍"的全部依据，`validate()` 直接抛错而不是钳制。
+- **63 关里没有一行用到多目标 `target` 数组、也没有一行带非空 `start`**：模型支持、测试支持
+  （`test/jug.test.mjs` / `test/solve.test.mjs` 各有断言），但生成器不抽它们。
+- 分注档（`decant`，par 12–20）在真手上是 12–20 次拖动，`solutions` 高得离谱（一行 3 090 条最短走法）；
+  它存在的意义是印着可证的数字，不是"好玩"。
+- 通关后没有彩带、没有音效、没有分享弹窗；分享只分享谜题本身（`#/lot/<id>`），不带战绩。
+- Electron 壳过 `node --check`，但仓库不装 electron，**没有跑过真实启动**。
+- 移动端断点（≤820px）已写、`touch-action: none` 已接，但**没有真机验证**（验收是 1280×800 桌面 headless）。
+- 多语言：UI 只有中文。
+
+## License
+
+MIT © 2026 z-biz-game
