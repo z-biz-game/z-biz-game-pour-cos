@@ -25,6 +25,9 @@ export function mulberry32(a) {
   };
   rng.int = (n) => Math.floor(rng() * n);
   rng.range = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
+  // 连续版：角度、速度、寿命这些量不该被取整。渲染层的水花用它，而不是 Math.random()，
+  // 所以 30/60/120Hz 对拍时粒子才有可比性。
+  rng.span = (lo, hi) => lo + rng() * (hi - lo);
   rng.pick = (arr) => arr[Math.floor(rng() * arr.length)];
   rng.chance = (p) => rng() < p;
   rng.shuffle = (arr) => {

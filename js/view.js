@@ -667,6 +667,14 @@ export function createView(canvas, { onCommit } = {}) {
       }
       return particles.length;
     },
+    // 动作落地点（canvas 局部坐标，不是 client 像素）：FILL→水龙头，DUMP→下水口，POUR→被倒进的那只桶。
+    // 调用方只给 action，换算留在这里，免得 main.js 猜出一套两套坐标。
+    landing(action) {
+      if (!game || !action) return null;
+      if (action.op === FILL) return centre('tap');
+      if (action.op === DUMP) return centre('drain');
+      return centre('bucket', action.j);
+    },
     // Where an automated finger should press, in client pixels.
     bucketPoint(i) {
       if (!game || !geom.boxes[i]) return null;

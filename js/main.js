@@ -15,6 +15,8 @@ import {
   TIERS, ALL, byId, levelAt, lotsIn, randomLot, dailyLot, tierByKey, stats as poolStats,
 } from './core/library.js';
 import { todayKey } from './core/rng.js';
+import { audio } from './audio.js';
+import { prefs } from './prefs.js';
 import { createView } from './view.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +27,9 @@ const el = {
   verdict: $('verdict'), tally: $('tally'), undo: $('undo'), hint: $('hint'),
   restart: $('restart'), share: $('share'), next: $('next'), again: $('again'),
   toast: $('toast'), canvas: $('bench'), wipe: $('wipe'),
+  help: $('help'), pause: $('pause'), mute: $('mute'), fullscreen: $('fullscreen'),
+  paused: $('paused-card'), resume: $('resume'), tutorial: $('tutorial'),
+  tutorialTitle: $('tutorial-title'), tutorialGo: $('tutorial-go'),
 };
 
 const LEVELS = ALL.length;
@@ -37,6 +42,7 @@ const app = {
   hints: 0,
   label: '',
   day: null,
+  paused: false,
 };
 
 function clampIndex(n) {
@@ -86,6 +92,7 @@ function setGame(lot, label) {
   app.label = label || app.label;
   app.game = createGame(lot);
   app.hints = 0;
+  setPaused(false); // 换题不许把上一题的暂停态带进新的一局
   view.attach(app.game);
   el.curtain.hidden = true;
   say('');
@@ -238,9 +245,15 @@ function commit(action) {
   if (!res.moved) {
     view.redraw();
     renderCrumbs();
+    audio.refuse();
     say(`${describe(app.game.comp, action)} —— <b>什么也没变</b>，不计步（${res.reason}）`);
     return false;
   }
+  // 一次真的水位变化：水花落在动作的目的地，音色按动作含义走（接满上扬、倒空下行、互倒扫频）。
+  view.splash(view.landing(action), action.op === DUMP ? 'dump' : 'pour');
+  if (action.op === FILL) audio.fill();
+  else if (action.op === DUMP) audio.dump();
+  else audio.pour();
   if (app.game.done) finish();
   else {
     view.redraw();
@@ -254,6 +267,9 @@ function finish() {
   const lot = app.lot;
   const g = app.game;
   const rec = store.solve(lot.id, { moves: g.moves, par: lot.par, hints: app.hints });
+  const goal = Array.from(lot.comp.goal).findIndex((x) => x);
+  view.splash(view.landing({ op: POUR, i: 0, j: goal < 0 ? 0 : goal }), 'win');
+  audio.win();
   if (app.day) store.markDaily(app.day, lot.id);
   let nextIndex = 0;
   if (app.mode === 'campaign') {
@@ -315,6 +331,118 @@ function shareLink() {
   }
 }
 
+// ---------- HUD：暂停 / 静音 / 全屏 / 玩法说明 ----------
+
+// 声音开关与「看过说明」不放进成绩存档：js/core/storage.js 的字段形状由 test/storage.test.mjs
+// 钉死，而且「清空存档」不该顺手把玩家的声音设置也清掉。所以是另一个 key，坏了就当没设过。
+const PREF_KEY = 'pour.prefs.v1';
+
+function readPrefs() {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    const p = raw ? JSON.parse(raw) : null;
+    return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+  } catch (err) {
+    return {}; // file:// 与隐私模式下这里必炸，偏好缺省即可
+  }
+}
+
+let userPrefs = readPrefs();
+
+function savePrefs(patch) {
+  userPrefs = { ...userPrefs, ...patch };
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify(userPrefs));
+  } catch (err) {
+    /* 这一局只在内存里记住 */
+  }
+}
+
+function setPaused(on) {
+  const wanted = !!on;
+  if (wanted && !app.game) return app.paused;
+  app.paused = wanted && view.setPaused(true);
+  if (!app.paused) view.setPaused(false);
+  el.pause.setAttribute('aria-pressed', String(app.paused));
+  el.pause.textContent = app.paused ? '▶' : '❙❙';
+  el.pause.setAttribute('aria-label', app.paused ? '继续' : '暂停');
+  el.paused.hidden = !app.paused;
+  if (app.paused) audio.suspend();
+  else audio.resume(); // 静音态下 resume() 自己会把上下文叫醒，所以这里可以直接调
+  return app.paused;
+}
+
+function setMuted(on) {
+  const muted = audio.setMuted(on);
+  el.mute.setAttribute('aria-pressed', String(muted));
+  el.mute.textContent = muted ? '静' : '♪';
+  el.mute.setAttribute('aria-label', muted ? '取消静音' : '静音');
+  el.mute.title = muted ? '音效已关（M）' : '音效已开（M）';
+  savePrefs({ muted });
+  return muted;
+}
+
+function toggleFullscreen() {
+  const node = document.documentElement;
+  if (document.fullscreenElement) {
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    return false;
+  }
+  if (!node.requestFullscreen) {
+    toast('这个浏览器没有全屏接口');
+    return false;
+  }
+  const req = node.requestFullscreen();
+  if (req && req.catch) req.catch(() => toast('系统不答应全屏'));
+  return true;
+}
+
+function syncFullscreen() {
+  const on = !!document.fullscreenElement;
+  el.fullscreen.setAttribute('aria-pressed', String(on));
+  el.fullscreen.setAttribute('aria-label', on ? '退出全屏' : '全屏');
+  view.measure(); // 全屏改的是视口，量桶几何必须跟着重算
+  return on;
+}
+
+function openTutorial() {
+  el.tutorial.hidden = false;
+  if (el.tutorialGo.focus) el.tutorialGo.focus();
+  return true;
+}
+
+function closeTutorial() {
+  el.tutorial.hidden = true;
+  savePrefs({ taught: true });
+  return false;
+}
+
+el.pause.addEventListener('click', () => setPaused(!app.paused));
+el.resume.addEventListener('click', () => setPaused(false));
+el.mute.addEventListener('click', () => setMuted(!audio.muted));
+el.fullscreen.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', syncFullscreen);
+el.help.addEventListener('click', () => openTutorial());
+el.tutorialGo.addEventListener('click', closeTutorial);
+el.tutorial.addEventListener('click', (ev) => {
+  if (ev.target === el.tutorial) closeTutorial(); // 点遮罩关闭，点卡片内容不关
+});
+
+// 声音引擎只能在用户手势里起来；只试一次，之后每个动作直接走 audio.*。
+function unlockAudio() {
+  audio.unlock();
+  window.removeEventListener('pointerdown', unlockAudio, true);
+  window.removeEventListener('keydown', unlockAudio, true);
+}
+window.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+window.addEventListener('keydown', unlockAudio, { capture: true });
+
+// 减动效是系统开关，玩家随时可改：改了要立刻把画面重画一次，不然静止的水面还留着上一秒的脉动相位。
+prefs.onChange(() => view.redraw());
+
+if (userPrefs.muted) setMuted(true);
+if (!userPrefs.taught) openTutorial();
+
 el.modes.addEventListener('click', (ev) => {
   const b = ev.target.closest('button[data-mode]');
   if (!b) return;
@@ -360,7 +488,9 @@ function restart() {
   reset(app.game);
   app.hints = 0;
   el.curtain.hidden = true;
+  setPaused(false);
   view.attach(app.game); // resets the water tween as well as the levels
+  view.resetClock(); // 时钟归零、在飞的水滴与提示脉动一起清掉，否则新题带着旧相位开跑
   render();
   say('回到起点');
 }
@@ -388,13 +518,31 @@ el.wipe.addEventListener('click', () => {
 
 window.addEventListener('hashchange', apply);
 window.addEventListener('resize', () => view.measure());
+// 键位就是玩法说明里那一行，两边必须是同一份实现：这里只调 HUD 的那几个函数，不另写一套状态。
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const k = ev.key.toLowerCase();
-  if (k === 'escape' && !el.curtain.hidden) el.curtain.hidden = true;
+  const focused = ev.target && ev.target.closest && ev.target.closest('button, [role="dialog"]');
+  if (k === '?' || k === '/') { ev.preventDefault(); openTutorial(); return; }
+  if (k === 'escape') {
+    if (!el.tutorial.hidden) closeTutorial();
+    else if (app.paused) setPaused(false);
+    else if (!el.curtain.hidden) el.curtain.hidden = true;
+    return;
+  }
+  // 焦点在按钮上时，Enter/Space 是浏览器自己的「按下这个按钮」，这里再动一次就是双重切换。
+  if ((k === ' ' || k === 'spacebar' || k === 'enter') && focused) return;
+  if (k === 'enter') {
+    if (!el.tutorial.hidden) closeTutorial();
+    else if (app.paused) setPaused(false);
+    return;
+  }
+  if (k === ' ' || k === 'spacebar' || k === 'p') { ev.preventDefault(); setPaused(!app.paused); return; }
+  if (k === 'r') el.restart.click();
   else if (k === 'u') el.undo.click();
   else if (k === 'h') el.hint.click();
-  else if (k === 'r') el.restart.click();
+  else if (k === 'm') setMuted(!audio.muted);
+  else if (k === 'f') toggleFullscreen();
 });
 
 view.start();
@@ -427,6 +575,17 @@ window.pour = {
       solved: Object.values(store.records).filter((r) => r.solved).length,
       curtain: !el.curtain.hidden,
       hash: location.hash,
+      // 对拍字段（BRIEF_COS §3）：30/60/120Hz 三档只有比这些才有意义，全部取自 view/audio 的真值。
+      paused: app.paused,
+      tutorial: !el.tutorial.hidden,
+      muted: audio.muted,
+      audio: audio.stats(),
+      reducedMotion: prefs.reducedMotion,
+      fullscreen: !!document.fullscreenElement,
+      animClock: view.animTime(),
+      shown: view.shownLevels(),
+      particles: view.particleCount(),
+      assets: view.assetsReady(),
       theoremGcd: app.lot ? theoremLine(app.lot).gcd : 0,
       theoremAmounts: app.lot ? theoremLine(app.lot).amounts.length : 0,
     };
@@ -456,6 +615,14 @@ window.pour = {
   },
   hintOnce() { el.hint.click(); return { hints: app.hints, line: el.hintline.textContent }; },
   undoOnce() { el.undo.click(); return app.game.moves; },
+  // HUD 的控制面：测试要能「按下暂停」而不是「读到 paused:true」。
+  setPaused(on) { return setPaused(on === undefined ? !app.paused : !!on); },
+  setMuted(on) { return setMuted(on === undefined ? !audio.muted : !!on); },
+  setReducedMotion(on) { return prefs.setReducedMotion(!!on); },
+  fullscreenOnce() { return toggleFullscreen(); },
+  showTutorial() { return openTutorial(); },
+  hideTutorial() { return closeTutorial(); },
+  splashCount(at, kind) { return view.splash(at || view.landing({ op: POUR, i: 0, j: 0 }), kind || 'pour'); },
   store,
   ops: { FILL, DUMP, POUR },
 };
