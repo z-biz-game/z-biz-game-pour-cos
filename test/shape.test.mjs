@@ -247,4 +247,41 @@ test('the CI syntax glob is the same list as npm run check', () => {
   ok(grab(line).includes('sw.js'), `the CI list is ${grab(line)}`);
 });
 
+// ---------- 7. the thumb floor lands on controls that really exist ----------
+
+test('每个真的会被点的控件都拿到 44px 命中区', () => {
+  const css = readFileSync(join(root, 'css/game.css'), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const bound = (sel, prop) => {
+    let best = 0;
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!m[1].split(',').map((s) => s.trim()).includes(sel)) continue;
+      for (const d of m[2].matchAll(new RegExp(`min-${prop}:\\s*(\\d+)px`, 'g'))) best = Math.max(best, Number(d[1]));
+    }
+    return best;
+  };
+  ok(bound('.touch', 'height') >= 44 && bound('.touch', 'width') >= 44, '.touch 那条规则本身要够 44px');
+
+  const html = readFileSync(join(root, 'index.html'), 'utf-8').replace(/<!--[\s\S]*?-->/g, '');
+  const main = readFileSync(join(root, 'js/main.js'), 'utf-8');
+  const touches = [...html.matchAll(/<button\b[^>]*>/g)].map((m) => m[0]);
+  eq(touches.length >= 12, true, `${touches.length} 个写死的按钮，太少说明页面结构变了却没来看这条`);
+  for (const tag of touches) {
+    const cls = (tag.match(/class="([^"]*)"/) || ['', ''])[1];
+    ok(/(^|\s)touch(\s|$)/.test(cls), `页面上的 ${tag.slice(0, 56)} 没有 .touch，命中区没来源`);
+  }
+  ok(bound('.about summary', 'height') >= 44, '「关于」面板的 <summary> 也是点击目标');
+
+  // 生成出来的按钮：类名是模板变量，靠容器规则兜住 —— 先确认它真的写进那个容器。
+  const generated = [...main.matchAll(/<button\b[^>]*>/g)].map((m) => m[0]);
+  ok(generated.length >= 4, `${generated.length} 个运行时生成的按钮`);
+  const shelf = /el\.shelf\.innerHTML\s*=/.test(main);
+  ok(shelf, '生成按钮的落点仍是 #shelf，规则名要跟着改');
+  for (const tag of generated) {
+    const cls = (tag.match(/class="([^"]*)"/) || ['', ''])[1];
+    const covered = /(^|\s)touch(\s|$)/.test(cls)
+      || (shelf && bound('.shelf button', 'height') >= 44 && bound('.shelf button', 'width') >= 44);
+    ok(covered, `生成的 ${tag.slice(0, 56)} 既没 .touch，容器规则也没给 44px`);
+  }
+});
+
 run();

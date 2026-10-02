@@ -98,7 +98,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .shelf { display: flex; flex-wrap: wrap; gap: 6px; }
 .shelf .tier { width: 100%; font-size: 11px; color: var(--ink-dim); margin-top: 6px; letter-spacing: 0.1em; }
-.shelf button { min-width: 44px; padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
+.shelf button { min-width: 44px; min-height: 44px; padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
 .shelf button:hover { color: var(--ink); border-color: rgba(226, 232, 240, 0.3); }
 .shelf button.done { color: var(--amber); border-color: rgba(224, 166, 60, 0.35); }
 .shelf button.perfect { color: var(--cyan); border-color: rgba(120, 220, 255, 0.35); }
@@ -107,7 +107,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .shelf .wide { width: 100%; }
 
 .about { font-size: 11px; color: var(--ink-dim); line-height: 1.7; border-top: 1px solid var(--line); padding-top: 10px; }
-.about summary { cursor: pointer; letter-spacing: 0.08em; }
+.about summary { cursor: pointer; letter-spacing: 0.08em; min-height: 44px; padding: 12px 0; }
 .about code { color: var(--amber); font-size: 10px; }
 .about .save { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .about #wipe { font-size: 10px; padding: 5px 9px; color: var(--ink-dim); border-color: rgba(224, 166, 60, 0.4); }
