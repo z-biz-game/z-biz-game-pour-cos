@@ -9,44 +9,43 @@
 const KEY = 'pour.save.v1';
 
 // The browser never hands us a polite null: under file://, in a private window, or with
-// cookies blocked, touching localStorage *throws*. So the handle is fetched behind a try,
-// and every call on it is wrapped again, because some engines only fail on getItem.
+// cookies blocked, touching localStorage *throws*. So the probe and each call are guarded
+// separately — reading a property that throws only fails on the property, while Chrome in a
+// third-party-cookie-blocked tab exposes the property and throws inside getItem itself.
 // `globalThis` rather than `window` is deliberate — js/core/* must stay free of any
 // DOM-global reference so it can be imported by node's test runner (test/storage.test.mjs)
 // and by the build-time tools without a shim.
-function disk() {
+function available() {
   try {
-    return globalThis.localStorage || null;
+    const ls = globalThis.localStorage;
+    return !!ls && typeof ls.getItem === 'function';
   } catch (err) {
-    return null;
+    return false;
   }
 }
 
 function readRaw() {
-  const ls = disk();
-  if (!ls) return null;
+  if (!available()) return null;
   try {
-    return ls.getItem(KEY);
+    return localStorage.getItem(KEY);
   } catch (err) {
-    return null;
+    return null; // some engines only fail on getItem, not on the property lookup
   }
 }
 
 function writeRaw(value) {
-  const ls = disk();
-  if (!ls) return;
+  if (!available()) return;
   try {
-    ls.setItem(KEY, value);
+    localStorage.setItem(KEY, value);
   } catch (err) {
     /* quota or a locked-down profile: this session is memory-only */
   }
 }
 
 function dropRaw() {
-  const ls = disk();
-  if (!ls) return;
+  if (!available()) return;
   try {
-    ls.removeItem(KEY);
+    localStorage.removeItem(KEY);
   } catch (err) {
     /* nothing was ever persisted */
   }
@@ -63,27 +62,87 @@ export function blank() {
 
 let cache = null;
 
+// Stage 2 of decoding. Stage 1 (`JSON.parse`) can only fail on the whole file, but the way a
+// save actually gets damaged is one field inside it: a truncated write leaves a record that is
+// `null`, an old bake left a counter as a string, someone edited the JSON and put `-3` in the
+// campaign pointer. The shell reads these blind (`Object.values(store.records).filter(r =>
+// r.solved)`), so one bad record used to be able to throw and freeze the whole game. Here each
+// record and each daily entry is validated on its own and dropped by itself — a damaged save
+// loses the damaged part, never the player's afternoon.
+const COUNTER_MAX = 1e9;
+
+function count(value, fallback) {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n >= 0 && n <= COUNTER_MAX ? n : fallback;
+}
+
+// The campaign pointer is a level number, so it is the one counter with a lower bound.
+function levelPointer(value) {
+  const n = count(value, 0);
+  return n >= 1 ? n : blank().unlocked;
+}
+
+// Returns null for "this record is not a record". A missing `best` is fatal: the whole point of
+// a record is the score, and there is no safe default for a puzzle the player may not have
+// solved at all.
+function cleanRecord(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const best = count(raw.best, 0);
+  const plays = count(raw.plays, 0);
+  if (best < 1 || plays < 1) return null;
+  return { solved: !!raw.solved, best, plays, perfect: !!raw.perfect };
+}
+
+function cleanRecords(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [id, rec] of Object.entries(raw)) {
+    const kept = cleanRecord(rec);
+    if (kept) out[id] = kept;
+  }
+  return out;
+}
+
+function cleanDaily(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [day, entry] of Object.entries(raw)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    if (typeof entry.id !== 'string' || !entry.id) continue;
+    const at = Number(entry.at);
+    out[day] = { id: entry.id, at: Number.isFinite(at) && at >= 0 ? at : 0 };
+  }
+  return out;
+}
+
+function cleanStats(raw) {
+  const base = blank().stats;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
+  for (const key of Object.keys(base)) base[key] = count(raw[key], 0);
+  return base;
+}
+
+// null means "this is not a save file" — malformed text, or valid JSON that is not an object.
+function decode(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return {
+    records: cleanRecords(parsed.records),
+    daily: cleanDaily(parsed.daily),
+    unlocked: levelPointer(parsed.unlocked),
+    stats: cleanStats(parsed.stats),
+  };
+}
+
 function load() {
   if (cache) return cache;
   const raw = readRaw();
-  if (raw) {
-    try {
-      const p = JSON.parse(raw);
-      if (p && typeof p === 'object') {
-        const base = blank();
-        cache = {
-          records: p.records && typeof p.records === 'object' ? p.records : base.records,
-          daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
-          unlocked: Number(p.unlocked) > 0 ? Number(p.unlocked) : base.unlocked,
-          stats: { ...base.stats, ...(p.stats || {}) },
-        };
-        return cache;
-      }
-    } catch (err) {
-      // A corrupt save is not worth keeping; start clean rather than crash the shell.
-    }
-  }
-  cache = blank();
+  cache = (raw && decode(raw)) || blank();
   return cache;
 }
 

@@ -11,6 +11,7 @@
 //   * the daily log is keyed by date, so two days never overwrite each other;
 //   * a wipe clears memory *and* disk *and* the key;
 //   * garbage on disk — malformed or wrong-shaped — degrades to a blank save, not a crash;
+//   * and a save that is only *partly* broken loses only the broken record, not the rest;
 //   * storage being unavailable is normal operation: the session still works in memory.
 //
 // storage.js keeps its cache at module scope, so each row imports a fresh module instance
@@ -299,7 +300,50 @@ async function scenario(name, where, fn) {
   });
 }
 
-// ---------- 11. hostile storage ----------
+// ---------- 11. a save that is only *partly* broken ----------
+
+{
+  const mixed = JSON.stringify({
+    records: {
+      good: { solved: true, best: 5, plays: 2, perfect: true },
+      'is-null': null,
+      'missing-field': { solved: true, plays: 3 },
+      'wrong-type': { solved: true, best: 'lots', plays: 1, perfect: false },
+      'out-of-range': { solved: true, best: -2, plays: 1 },
+      'is-an-array': [1, 2, 3],
+    },
+    daily: {
+      '2026-09-26': { id: 'good', at: 111 },
+      '2026-09-27': null,
+      '2026-09-28': { id: 42, at: 'soon' },
+      '2026-09-29': 'nope',
+    },
+    unlocked: 9876543210987,
+    stats: { solves: '7', perfect: -1, moves: null, hints: 2.9, bogus: 5 },
+  });
+  const disk = fakeDisk(mixed);
+  await scenario('one damaged record drops only itself, never the whole save', envWith(disk), (mod) => {
+    const { store } = mod;
+    eq(Object.keys(store.records), ['good'], 'four junk records and one array are gone; the healthy one is kept');
+    eq(store.records.good, { solved: true, best: 5, plays: 2, perfect: true }, 'kept exactly as the disk had it');
+    eq(store.record('is-null'), null, 'a record that is null reads as "never played"');
+    eq(store.record('missing-field'), null, 'no score means no record, and no invented default score');
+    eq(Object.keys(store.daily), ['2026-09-26'], 'the one daily entry with a string id and a real stamp survives');
+    eq(store.daily['2026-09-26'].at, 111, 'a genuine timestamp is not clamped away');
+    eq(store.unlocked, 1, 'a pointer far outside the campaign is treated as "not yet earned"');
+    eq(store.stats, { solves: 7, perfect: 0, moves: 0, hints: 2 }, 'numeric strings count, negatives and fractions do not');
+    eq('bogus' in store.stats, false, 'unknown counters are not carried into the shape the shell reads');
+    // This is the exact line js/main.js:168 runs on every render: one junk record used to throw
+    // here and take the shell down with it.
+    eq(Object.values(store.records).filter((r) => r.solved).length, 1, 'the shell totals itself without a crash');
+    eq([disk.gets.length, disk.sets, disk.removes], [1, 0, 0], 'salvaging is a read: it may not rewrite the disk');
+    const again = store.solve('missing-field', { moves: 4, par: 4, hints: 0 });
+    eq(again, { solved: true, best: 4, plays: 1, perfect: true }, 'and the dropped puzzle can be earned again');
+    eq(Object.keys(JSON.parse(disk.lastWrite).records).sort(), ['good', 'missing-field'], 'the next write keeps both');
+  });
+}
+
+// ---------- 12. hostile storage ----------
 
 {
   await scenario('a localStorage that throws on every call still gives a working session', envWith(hostileDisk()), (mod) => {
@@ -342,7 +386,7 @@ async function scenario(name, where, fn) {
   });
 }
 
-// ---------- 12. the disk is the source of truth across module instances ----------
+// ---------- 13. the disk is the source of truth across module instances ----------
 
 {
   const shared = fakeDisk();
@@ -369,7 +413,7 @@ async function scenario(name, where, fn) {
   });
 }
 
-// ---------- 13. an old save from an earlier bake ----------
+// ---------- 14. an old save from an earlier bake ----------
 
 {
   const old = JSON.stringify({

@@ -14,6 +14,12 @@
   --cyan: #78dcff;
   --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", monospace;
   --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  /* iOS 上 env() 只有在 viewport-fit=cover 时才非零 —— index.html 里已经带上了。
+     全部内边距走 max(设计值, 安全区)，所以刘海与 home indicator 都盖不到按钮。 */
+  --sa-t: env(safe-area-inset-top, 0px);
+  --sa-r: env(safe-area-inset-right, 0px);
+  --sa-b: env(safe-area-inset-bottom, 0px);
+  --sa-l: env(safe-area-inset-left, 0px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,21 +28,31 @@ body {
   background: radial-gradient(120% 100% at 50% 0%, var(--bg-2), var(--bg) 60%);
   color: var(--ink); font-family: var(--mono); -webkit-font-smoothing: antialiased;
   overflow: hidden; user-select: none; cursor: default;
+  padding: var(--sa-t) var(--sa-r) var(--sa-b) var(--sa-l);
 }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
-.topbar { display: flex; align-items: center; gap: 18px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+/* 命中区：拇指下限 44px（Apple HIG / WCAG 2.5.5）。所有可点控件都带 .touch，
+   连图标按钮也靠 min-width 撑住，不靠 padding 假装大。 */
+.touch { min-height: 44px; min-width: 44px; }
+
+.topbar { display: flex; align-items: center; gap: 18px; padding: max(12px, 4px) max(18px, var(--sa-r)) 12px max(18px, var(--sa-l)); border-bottom: 1px solid var(--line); }
 .brand { font-size: 16px; letter-spacing: 0.06em; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
 .brand small { color: var(--ink-dim); font-size: 10px; letter-spacing: 0.28em; }
 .brand-mark { color: var(--water); }
 .modes { display: flex; gap: 4px; }
-.modes button { padding: 6px 14px; font-size: 13px; color: var(--ink-dim); border: 1px solid transparent; border-radius: 6px; }
+.modes button { padding: 6px 14px; font-size: 13px; color: var(--ink-dim); border: 1px solid transparent; border-radius: 6px; transition: color .14s, background-color .14s; }
 .modes button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
 .modes button[aria-current="true"] { color: var(--water); border-color: rgba(96, 190, 232, 0.4); background: rgba(96, 190, 232, 0.08); }
 .totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
 .totals b { color: var(--water); font-weight: 600; }
 
-.stage { display: grid; grid-template-columns: minmax(0, 1fr) 328px; gap: 18px; padding: 18px; height: calc(100% - 53px); }
+.hud { display: flex; gap: 4px; }
+.hud button { font-size: 15px; color: var(--ink-dim); border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); transition: color .14s, border-color .14s; }
+.hud button:hover { color: var(--water); border-color: rgba(96, 190, 232, 0.5); }
+.hud button[aria-pressed="true"] { color: var(--amber); border-color: rgba(224, 166, 60, 0.55); background: rgba(224, 166, 60, 0.1); }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 328px; gap: 18px; padding: 18px max(18px, var(--sa-r)) max(18px, var(--sa-b)) max(18px, var(--sa-l)); height: calc(100% - 53px); }
 .board { position: relative; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
 #bench { width: 100%; height: 100%; min-height: 0; display: block; touch-action: none; }
 .hint-line { min-height: 20px; font-size: 12px; color: var(--ink-dim); text-align: center; }
@@ -71,7 +87,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .linkline code { color: var(--water); }
 
 .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.controls button { padding: 10px 4px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ink); }
+.controls button { padding: 10px 4px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ink); transition: border-color .14s, color .14s; }
 .controls button:hover:not(:disabled) { border-color: rgba(96, 190, 232, 0.5); color: var(--water); }
 .controls button:disabled { opacity: 0.35; cursor: not-allowed; }
 
@@ -82,7 +98,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .shelf { display: flex; flex-wrap: wrap; gap: 6px; }
 .shelf .tier { width: 100%; font-size: 11px; color: var(--ink-dim); margin-top: 6px; letter-spacing: 0.1em; }
-.shelf button { min-width: 34px; padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
+.shelf button { min-width: 44px; padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
 .shelf button:hover { color: var(--ink); border-color: rgba(226, 232, 240, 0.3); }
 .shelf button.done { color: var(--amber); border-color: rgba(224, 166, 60, 0.35); }
 .shelf button.perfect { color: var(--cyan); border-color: rgba(120, 220, 255, 0.35); }
@@ -98,7 +114,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .curtain { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12, 14, 18, 0.72); backdrop-filter: blur(3px); border-radius: 12px; }
 .curtain[hidden] { display: none; }
-.curtain-card { width: min(300px, 86%); border: 1px solid rgba(96, 190, 232, 0.35); border-radius: 14px; background: var(--bg-2); padding: 22px; text-align: center; }
+.curtain-card { width: min(300px, 86%); border: 1px solid rgba(96, 190, 232, 0.35); border-radius: 14px; background: var(--bg-2); padding: 22px; text-align: center; animation: rise .22s ease-out; }
 .stars { font-size: 26px; letter-spacing: 0.2em; color: var(--amber); }
 .curtain-card h2 { font-size: 19px; margin: 6px 0 8px; }
 .tally { font-size: 12px; color: var(--ink-dim); line-height: 1.8; }
@@ -107,13 +123,36 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .curtain-actions button { flex: 1; padding: 10px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; }
 .curtain-actions .primary { border-color: rgba(96, 190, 232, 0.6); color: var(--water); background: rgba(96, 190, 232, 0.1); }
 
-.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2); font-size: 12px; color: var(--water); }
+.modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: max(16px, var(--sa-t)) max(16px, var(--sa-r)) max(16px, var(--sa-b)) max(16px, var(--sa-l)); background: rgba(8, 10, 14, 0.82); backdrop-filter: blur(4px); }
+.modal[hidden] { display: none; }
+.modal-card { width: min(460px, 100%); max-height: 88vh; overflow: auto; border: 1px solid rgba(96, 190, 232, 0.35); border-radius: 14px; background: var(--bg-2); padding: 22px; animation: rise .22s ease-out; }
+.modal-card h2 { font-size: 20px; margin-bottom: 12px; letter-spacing: 0.04em; }
+.howto { list-style: none; counter-reset: step; font-size: 12.5px; line-height: 1.75; color: var(--ink-dim); display: flex; flex-direction: column; gap: 9px; }
+.howto li { counter-increment: step; padding-left: 26px; position: relative; }
+.howto li::before { content: counter(step); position: absolute; left: 0; top: 1px; color: var(--water); font-variant-numeric: tabular-nums; }
+.howto b { color: var(--ink); }
+.keys { margin-top: 14px; font-size: 11px; color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 12px; line-height: 1.8; }
+.keys b { color: var(--amber); }
+
+.toast { position: fixed; left: 50%; bottom: calc(26px + var(--sa-b)); transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2); font-size: 12px; color: var(--water); animation: rise .18s ease-out; }
 .toast[hidden] { display: none; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* reduceMotion：不是把动画时长改成 0 的空块，而是逐条撤掉位移与淡入。
+   canvas 侧的粒子/涟漪/抖动由 js/prefs.js 的同一个信号把关（两处必须同源，
+   否则会出现 DOM 静止、画布还在脉动的分裂观感）。 */
+@media (prefers-reduced-motion: reduce) {
+  .curtain-card, .modal-card, .toast { animation: none; }
+  .modes button, .controls button, .hud button { transition: none; }
+  *, *::before, *::after { scroll-behavior: auto; }
+}
 
 @media (max-width: 820px) {
   body { overflow: auto; }
   .stage { grid-template-columns: 1fr; height: auto; }
   .board { height: 58vh; min-height: 320px; }
   .topbar { flex-wrap: wrap; gap: 10px; }
-  .totals { margin-left: 0; width: 100%; }
+  .totals { margin-left: 0; width: 100%; order: 3; }
+  .hud { margin-left: auto; }
 }

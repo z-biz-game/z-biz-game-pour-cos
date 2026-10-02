@@ -4,34 +4,81 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101217">
-<meta name="description" content="倒水量：用几只没刻度的桶量出指定的数。每一关的最少次数都是广度优先搜索量出来的，可解性由数论定理独立判定。">
-<link rel="icon" href="data:,">
+<meta name="description" content="倒水量：用几只没刻度的桶量出指定的数。每一关的最少次数都是广度优先搜索量出来的，可解性由数论定理独立判定。支持暂停、静音、全屏、触摸与离线安装。">
+<meta name="color-scheme" content="dark">
 <title>倒水量 · POUR</title>
 <link rel="stylesheet" href="css/game.css">
+
+<!-- 图标全部是 assets/gen/gen_art.py 产的真 PNG（14 张，最小边 ≥180 的有 5 张），
+     开工前这里是 <link rel="icon" href="data:,"> —— 一个空 favicon。 -->
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/icon-64.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+
+<!-- 社交分享卡：1200x630 真 PNG。本仓是离线 Electron/PWA 包，没有公开站点地址，
+     所以 og:url 一律不编，只给相对路径。 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="倒水量 POUR">
+<meta property="og:title" content="倒水量 · POUR —— 难度是一个量出来的数">
+<meta property="og:description" content="没刻度的桶，量出指定的数。每一关的最少次数由 BFS 在 ∏(c+1) 状态图上量出，可解性由 Bézout 定理独立判定。">
+<meta property="og:image" content="assets/og/pour-og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="暗场工作台上三只容量 3/5/8 的量桶，桶内水位不同，最高那只上钉着一条琥珀色目标线">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="assets/og/pour-og.png">
+
+<!-- 关卡内两张位图提前取：不然进关第一帧没有贴图，要等一轮磁盘 -->
+<link rel="preload" as="image" href="assets/textures/bench-tile.png">
+<link rel="preload" as="image" href="assets/textures/backdrop.png">
+<link rel="preload" as="image" href="assets/sprites/droplet-sheet.png">
 </head>
 <body>
 <header class="topbar">
   <h1 class="brand"><span class="brand-mark">◺</span>倒水量<small>POUR</small></h1>
   <nav class="modes" id="modes" aria-label="模式">
-    <button type="button" data-mode="campaign">闯关</button>
-    <button type="button" data-mode="daily">每日</button>
-    <button type="button" data-mode="random">随机</button>
+    <button type="button" class="touch" data-mode="campaign">闯关</button>
+    <button type="button" class="touch" data-mode="daily">每日</button>
+    <button type="button" class="touch" data-mode="random">随机</button>
   </nav>
   <p class="totals" id="totals"></p>
+  <div class="hud" role="group" aria-label="系统控制">
+    <button type="button" id="help" class="touch" aria-label="玩法说明" title="玩法说明（H 或 ?）">?</button>
+    <button type="button" id="pause" class="touch" aria-label="暂停" aria-pressed="false" title="暂停 / 继续（P 或 Space）">❙❙</button>
+    <button type="button" id="mute" class="touch" aria-label="静音" aria-pressed="false" title="静音 / 取消静音（M）">♪</button>
+    <button type="button" id="fullscreen" class="touch" aria-label="全屏" aria-pressed="false" title="全屏（F）">⛶</button>
+  </div>
 </header>
 
 <main class="stage">
   <section class="board">
     <canvas id="bench" aria-label="倒水操作台"></canvas>
     <p class="hint-line" id="hintline"></p>
+    <div class="curtain" id="paused-card" hidden>
+      <div class="curtain-card">
+        <p class="stars">❙</p>
+        <h2>已暂停</h2>
+        <p class="tally">水面动画与音效都已停住；恢复后进度不丢。</p>
+        <div class="curtain-actions">
+          <button type="button" id="resume" class="primary touch">继续</button>
+        </div>
+      </div>
+    </div>
     <div class="curtain" id="curtain" hidden>
       <div class="curtain-card">
         <p class="stars" id="stars"></p>
         <h2 id="verdict"></h2>
         <p class="tally" id="tally"></p>
         <div class="curtain-actions">
-          <button type="button" id="again">再来一次</button>
-          <button type="button" id="next" class="primary">下一题</button>
+          <button type="button" id="again" class="touch">再来一次</button>
+          <button type="button" id="next" class="primary touch">下一题</button>
         </div>
       </div>
     </div>
@@ -46,10 +93,10 @@
     </table>
     <p class="theorem" id="theorem"></p>
     <div class="controls">
-      <button type="button" id="undo">撤销</button>
-      <button type="button" id="hint">提示</button>
-      <button type="button" id="restart">重开</button>
-      <button type="button" id="share">分享</button>
+      <button type="button" id="undo" class="touch">撤销</button>
+      <button type="button" id="hint" class="touch">提示</button>
+      <button type="button" id="restart" class="touch">重开</button>
+      <button type="button" id="share" class="touch">分享</button>
     </div>
     <p class="linkline" id="linkline"></p>
     <div class="log" id="log"></div>
@@ -57,12 +104,39 @@
     <details class="about">
       <summary>这一关的数字从哪来</summary>
       <p>每一题的<b>最少次数</b>都由 <code>js/core/solve.js</code> 的广度优先搜索在 ∏(cᵢ+1) 状态图上量出：一次拖动不论倒多少水都算一步。<b>有没有解</b>则由 <code>js/core/theorem.js</code> 的数论定理（Bézout）独立判定——两者相互印证，谁也不给谁打分。关卡来自 <code>tools/bake.mjs</code>：构建期跑 <code>js/core/make.js</code> 出题并复验，浏览器本身既不生成也不搜索。</p>
-      <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe">清空存档</button></p>
+      <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe" class="touch">清空存档</button></p>
     </details>
   </aside>
 </main>
 
+<!-- 玩法说明：首次进入自动弹，之后 ? / H 随时可开。Enter 或点「开始」进题。 -->
+<div class="modal" id="tutorial" hidden role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+  <div class="modal-card">
+    <h2 id="tutorial-title">怎么玩</h2>
+    <ol class="howto">
+      <li><b>拖动一只桶到水源</b> —— 接满。接满算一步，哪怕只差一格。</li>
+      <li><b>拖动一只桶到下水口</b> —— 倒空。倒空也算一步，哪怕只倒出一滴。</li>
+      <li><b>桶拖到另一只桶</b> —— 互倒，倒到<b>倒空</b>或<b>装满</b>为止，中途停不下来。一次拖动不论倒多少水都只算一步。</li>
+      <li>目标：让带琥珀线的那只桶里<b>正好</b>剩下要量的那个数。桶壁上那一排短划只是装饰 —— 它们没有刻度值，这正是题目的全部难度来源。</li>
+      <li>右侧「最少」是搜索量出来的次数：打平它，就是分毫不差。</li>
+    </ol>
+    <p class="keys"><b>键盘</b> Enter 开始 · Space/P 暂停 · R 重开 · U 撤销 · H 提示 · M 静音 · F 全屏 · ? 本说明</p>
+    <div class="curtain-actions">
+      <button type="button" id="tutorial-go" class="primary touch">开始量水</button>
+    </div>
+  </div>
+</div>
+
 <p class="toast" id="toast" hidden></p>
 <script type="module" src="js/main.js"></script>
+<script>
+// Service worker 注册放在 index 内联脚本里：file:// 下 navigator.serviceWorker 存在但
+// 注册必失败，所以整段跳过，且失败不许冒成未捕获异常。
+if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力缺省即可 */ });
+  });
+}
+</script>
 </body>
 </html>

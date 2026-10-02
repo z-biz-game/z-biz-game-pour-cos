@@ -11,8 +11,9 @@
 # rasterisation saturates the cores and, with no CDP client attached, Chrome does not exit on
 # its own. This game draws with 2D canvas, so plain headless Chrome is enough.
 #
-# Screenshots land in /tmp, never in the repository: test/shape.test.mjs fails the build if a
-# bitmap asset ever appears in the tree, and every pixel here is drawn by js/view.js.
+# Screenshots land in /tmp, never in the repository. test/shape.test.mjs 会把仓里每张位图与
+# 生成器资产对拍：多出来的一张随手截图既解不出 manifest 里的 sizes，也会被「每张位图都必须被
+# 引用」那行判成孤儿，所以调试图一律写到 /tmp。
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 CDP_PORT=${CDP_PORT:-9341}

@@ -7,12 +7,22 @@
 // to the right below. Three drop zones and nothing else, so an over-drag can only leave the
 // zone it was heading for — it can never cross into the other one.
 //
-// No image files anywhere in this repo: buckets, water, graduation marks, faucet and grate
-// are all drawn here. Device-pixel ratio is folded into the transform; everything else is in
-// CSS pixels.
+// Three bitmaps come from assets/gen/gen_art.py: the bench tile (createPattern), the stage
+// backdrop (drawn under everything) and the droplet sheet (particles). Everything else —
+// buckets, water, graduation marks, faucet, grate — is still drawn here, and each bitmap has a
+// vector fallback so a file:// open with a missing asset looks the same, only flatter.
+//
+// Time discipline (§3 of the polish brief):
+//   * 唯一的动画时钟是 `animClock`（秒），由 frame() 用帧 dt 累加；暂停时既不累加也不重绘。
+//     所有脉动/虚线流动/水滴寿命都读它，不再读 performance.now()。
+//   * 水位补间用 `1 - exp(-dt/τ)`，在相同总时长下与切分方式无关（闭式解），所以 30/60/120Hz
+//     对拍同一虚拟秒必须落在同一处。
+//   * 粒子不积分：位置是 (出生时刻, 年龄) 的闭式函数，帧率翻倍不会让它跑得更远。
 
 import { FILL, DUMP, POUR } from './core/jug.js';
 import { legal } from './core/game.js';
+import { rngFrom } from './core/rng.js';
+import { prefs } from './prefs.js';
 
 const PAD = 14;
 const TAP = 78; // band above the buckets the faucet hangs in
@@ -30,6 +40,12 @@ const COPPER = '#b4763f';
 const STEEL = '#8b95a5';
 const INK = 'rgba(226, 232, 240, 0.5)';
 
+const BENCH_TILE = 'assets/textures/bench-tile.png';
+const BACKDROP = 'assets/textures/backdrop.png';
+const DROPLET_SHEET = 'assets/sprites/droplet-sheet.png';
+const SHEET_FRAME = 128; // droplet-sheet.png 是 4 帧 128x128，帧序见 assets/gen/gen_art.py
+const PARTICLE_LIFE = 0.9; // 秒
+
 function roundBottom(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -46,15 +62,32 @@ function rectHit(z, p) {
   return p.x >= z.x && p.x <= z.x + z.w && p.y >= z.y && p.y <= z.y + z.h;
 }
 
+// 只在真实浏览器里建 Image；node vm 里 import 这个模块不许炸。
+function loadImage(src, onReady) {
+  if (typeof Image === 'undefined') return { img: null, ok: false };
+  const img = new Image();
+  img.onload = () => onReady(img);
+  img.onerror = () => { /* 缺贴图就走矢量回落，不抛 */ };
+  img.src = src;
+  return { img, ok: false };
+}
+
 export function createView(canvas, { onCommit } = {}) {
   const ctx = canvas.getContext('2d');
   let game = null;
   // shown[] chases pos[] so a pour reads as water travelling rather than as two screenshots.
   let shown = [];
   let drag = null; // { i, z0, target, now, action, ok, progress, over }
-  let hint = null; // { action, until }
+  let hint = null; // { action, until }  —— until 是 animClock 上的秒
   let raf = 0;
   let last = 0;
+  let paused = false;
+  let animClock = 0; // 秒：唯一可动的东西都读它，暂停即冻结
+  let particles = [];
+  let pattern = null;
+  let backdrop = null;
+  let sheet = null;
+  const jitter = rngFrom('pour.splash');
   let geom = {
     vw: 320, vh: 320, boxes: [], x0: 0, bw: 40, gap: 24, scale: 10,
     bottom: 200, tap: { x: 94, y: 14, w: TAP_W, h: TAP_H }, drain: { x: 200, y: 210, w: DRAIN_W, h: DRAIN_H },
@@ -106,11 +139,12 @@ export function createView(canvas, { onCommit } = {}) {
   // Which of the four zones a point falls in: the faucet, the grate, a bucket, or nothing.
   // Buckets are only their own bodies, so the row of buckets and the two icons cannot overlap.
   function zoneAt(p) {
-    if (rectHit(geom.tap, p)) return { z: 'tap', i: columnAt(p.x) };
-    if (rectHit(geom.drain, p)) return { z: 'drain', i: columnAt(p.x) };
-    for (let i = 0; i < geom.boxes.length; i++) {
-      const b = geom.boxes[i];
-      if (p.x >= b.x - 4 && p.x <= b.x + b.w + 4 && p.y >= b.y - 8 && p.y <= geom.bottom + 4) {
+    const g = geom;
+    if (rectHit(g.tap, p)) return { z: 'tap', i: columnAt(p.x) };
+    if (rectHit(g.drain, p)) return { z: 'drain', i: columnAt(p.x) };
+    for (let i = 0; i < g.boxes.length; i++) {
+      const b = g.boxes[i];
+      if (p.x >= b.x - 4 && p.x <= b.x + b.w + 4 && p.y >= b.y - 8 && p.y <= g.bottom + 4) {
         return { z: 'bucket', i };
       }
     }
@@ -118,13 +152,16 @@ export function createView(canvas, { onCommit } = {}) {
   }
 
   function centre(z, i) {
-    if (z === 'tap') return { x: geom.tap.x + geom.tap.w / 2, y: geom.tap.y + geom.tap.h / 2 };
-    if (z === 'drain') return { x: geom.drain.x + geom.drain.w / 2, y: geom.drain.y + geom.drain.h / 2 };
-    const b = geom.boxes[i] || { x: geom.x0, y: geom.bottom - 40, w: geom.bw };
-    return { x: b.x + b.w / 2, y: b.y + (geom.bottom - b.y) / 2 };
+    const g = geom;
+    if (z === 'tap') return { x: g.tap.x + g.tap.w / 2, y: g.tap.y + g.tap.h / 2 };
+    if (z === 'drain') return { x: g.drain.x + g.drain.w / 2, y: g.drain.y + g.drain.h / 2 };
+    const b = g.boxes[i] || { x: g.x0, y: g.bottom - 40, w: g.bw };
+    return { x: b.x + b.w / 2, y: b.y + (g.bottom - b.y) / 2 };
   }
 
   function localPoint(ev) {
+    // 一律按 getBoundingClientRect + clientX 换算：CSS 缩放或页面有滚动时，
+    // offsetX/layerX 会把手机上点 A 打成 B。
     const box = canvas.getBoundingClientRect();
     return { x: ev.clientX - box.left, y: ev.clientY - box.top };
   }
@@ -178,14 +215,16 @@ export function createView(canvas, { onCommit } = {}) {
   }
 
   function down(ev) {
-    if (!game || game.done) return;
+    if (!game || game.done || paused) return;
     const p = localPoint(ev);
     const z = zoneAt(p);
     if (z.z === 'none') return;
     drag = { i: z.i, z0: z.z, target: z, now: p, from: p, progress: 0, over: 0, action: null, ok: false };
     if (hint && (hint.action.i === z.i || hint.action.j === z.i)) hint = null;
     try {
-      if (canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
+      if (canvas.setPointerCapture && ev.pointerId !== undefined) {
+        canvas.setPointerCapture(ev.pointerId);
+      }
     } catch (err) {
       /* a browser that refuses capture still drags fine inside the canvas */
     }
@@ -238,12 +277,20 @@ export function createView(canvas, { onCommit } = {}) {
     ctx.strokeStyle = 'rgba(96, 190, 232, 0.8)';
     ctx.lineWidth = 3;
     ctx.setLineDash([6, 5]);
-    ctx.lineDashOffset = -(performance.now() / 40) % 11;
+    // 虚线流动读 animClock：暂停即停住，且不再依赖 performance.now()
+    ctx.lineDashOffset = -(animClock * 26) % 11;
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
     ctx.quadraticCurveTo((from.x + to.x) / 2, Math.min(from.y, to.y) + 10, to.x, to.y);
     ctx.stroke();
     ctx.restore();
+  }
+
+  // 0..1 的周期相位。reduceMotion 下取一个固定值：图案仍在（否则水龙头会看起来像坏了），
+  // 但不再动。
+  function phase(period) {
+    if (!prefs.motionAllowed()) return 0.32;
+    return (animClock % period) / period;
   }
 
   function drawFaucet() {
@@ -276,7 +323,7 @@ export function createView(canvas, { onCommit } = {}) {
     ctx.lineTo(cx + 20, y + 6);
     ctx.stroke();
     // a drip so the zone reads as "water comes out of here"
-    const t = (performance.now() % 1600) / 1600;
+    const t = phase(1.6);
     ctx.fillStyle = `rgba(120, 200, 240, ${(0.7 - t * 0.5).toFixed(3)})`;
     ctx.beginPath();
     ctx.arc(cx + 8, spout + 4 + t * 20, 2.4, 0, Math.PI * 2);
@@ -318,23 +365,24 @@ export function createView(canvas, { onCommit } = {}) {
   }
 
   function drawBucket(i, lvl) {
-    const b = geom.boxes[i];
+    const g = geom;
+    const b = g.boxes[i];
     const comp = game.comp;
     const cap = comp.caps[i];
     const r = Math.max(4, Math.round(b.w * 0.12));
 
     ctx.save();
     roundBottom(ctx, b.x, b.y, b.w, b.h, r);
-    const g = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y);
-    g.addColorStop(0, 'rgba(255,255,255,0.05)');
-    g.addColorStop(0.5, 'rgba(255,255,255,0.015)');
-    g.addColorStop(1, 'rgba(255,255,255,0.06)');
-    ctx.fillStyle = g;
+    const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y);
+    grad.addColorStop(0, 'rgba(255,255,255,0.05)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.015)');
+    grad.addColorStop(1, 'rgba(255,255,255,0.06)');
+    ctx.fillStyle = grad;
     ctx.fill();
     ctx.clip();
-    const wh = Math.max(0, geom.scale * lvl);
-    const wy = geom.bottom - wh;
-    const wg = ctx.createLinearGradient(0, wy, 0, geom.bottom);
+    const wh = Math.max(0, g.scale * lvl);
+    const wy = g.bottom - wh;
+    const wg = ctx.createLinearGradient(0, wy, 0, g.bottom);
     wg.addColorStop(0, WATER_TOP);
     wg.addColorStop(1, WATER_BOT);
     ctx.fillStyle = wg;
@@ -348,7 +396,7 @@ export function createView(canvas, { onCommit } = {}) {
     ctx.strokeStyle = 'rgba(226,232,240,0.22)';
     ctx.lineWidth = 1;
     for (let t = 1; t < cap; t++) {
-      const y = geom.bottom - geom.scale * t;
+      const y = g.bottom - g.scale * t;
       const long = t === cap / 2;
       ctx.beginPath();
       ctx.moveTo(b.x + 2, y);
@@ -370,7 +418,7 @@ export function createView(canvas, { onCommit } = {}) {
 
     // the need line, on target buckets only: this is the number being measured out
     if (comp.goal[i] && comp.need <= cap) {
-      const y = geom.bottom - geom.scale * comp.need;
+      const y = g.bottom - g.scale * comp.need;
       ctx.save();
       ctx.strokeStyle = NEED_LINE;
       ctx.lineWidth = 2;
@@ -389,14 +437,14 @@ export function createView(canvas, { onCommit } = {}) {
     ctx.textAlign = 'center';
     ctx.fillStyle = INK;
     ctx.font = '12px monospace';
-    ctx.fillText(`${i + 1} 号 · ${cap}`, b.x + b.w / 2, geom.bottom + 18);
+    ctx.fillText(`${i + 1} 号 · ${cap}`, b.x + b.w / 2, g.bottom + 18);
     ctx.fillStyle = lvl > 0.5 ? 'rgba(240, 250, 255, 0.96)' : 'rgba(226,232,240,0.4)';
     ctx.font = `600 ${Math.max(15, Math.round(b.w * 0.34))}px monospace`;
     ctx.fillText(String(Math.round(lvl)), b.x + b.w / 2,
-      Math.min(geom.bottom - 6, Math.max(b.y + 22, geom.bottom - Math.max(0, geom.scale * lvl) + 24)));
+      Math.min(g.bottom - 6, Math.max(b.y + 22, g.bottom - Math.max(0, g.scale * lvl) + 24)));
 
     if (game.done && comp.goal[i] && game.pos[i] === comp.need) {
-      const t = (performance.now() % 1100) / 1100;
+      const t = phase(1.1);
       ctx.strokeStyle = `rgba(120, 220, 255, ${(0.9 - t * 0.6).toFixed(3)})`;
       ctx.lineWidth = 3 + t * 3;
       roundBottom(ctx, b.x - 5 - t * 5, b.y - 5 - t * 5, b.w + 10 + t * 10, b.h + 10 + t * 5, r + 6);
@@ -409,7 +457,7 @@ export function createView(canvas, { onCommit } = {}) {
       ctx.stroke();
     }
     if (hint && hint.action && (hint.action.i === i || hint.action.j === i)) {
-      const t = (performance.now() % 900) / 900;
+      const t = phase(0.9);
       ctx.strokeStyle = `rgba(224, 166, 60, ${(0.9 - t * 0.55).toFixed(3)})`;
       ctx.lineWidth = 2 + t * 4;
       roundBottom(ctx, b.x - 4 - t * 6, b.y - 4 - t * 6, b.w + 8 + t * 12, b.h + 8 + t * 6, r + 6);
@@ -417,32 +465,84 @@ export function createView(canvas, { onCommit } = {}) {
     }
   }
 
+  // 粒子位置是出生参数与年龄的闭式函数（不逐步积分），所以帧率翻倍不会让它跑得更远。
+  function stepParticles() {
+    if (!particles.length) return;
+    particles = particles.filter((p) => animClock - p.born < p.life);
+  }
+
+  function drawParticles() {
+    if (!particles.length || !prefs.motionAllowed()) return;
+    ctx.save();
+    for (const p of particles) {
+      const age = animClock - p.born;
+      const t = age / p.life;
+      const x = p.x + p.vx * age;
+      const y = p.y + p.vy * age + 0.5 * p.g * age * age;
+      const alpha = Math.max(0, 0.9 * (1 - t));
+      if (sheet) {
+        const frame = Math.min(3, Math.floor(t * 4));
+        const s = p.size * (0.7 + t * 0.8);
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sheet, frame * SHEET_FRAME, 0, SHEET_FRAME, SHEET_FRAME, x - s / 2, y - s / 2, s, s);
+      } else {
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(120, 200, 240, 0.9)';
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, p.size * 0.16), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   function draw() {
-    const { vw, bottom } = geom;
-    ctx.clearRect(0, 0, geom.vw, geom.vh);
+    const g = geom;
+    ctx.clearRect(0, 0, g.vw, g.vh);
     if (!game) return;
-    ctx.fillStyle = 'rgba(255,255,255,0.015)';
-    ctx.fillRect(PAD, PAD + TAP - 10, vw - PAD * 2, bottom - PAD - TAP + 14);
+    // 场地贴图：cover 裁切（不许拉变形），压暗到几乎只是氛围，桶身仍是矢量画的
+    if (backdrop) {
+      const s = Math.max(g.vw / backdrop.width, g.vh / backdrop.height);
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      ctx.drawImage(
+        backdrop,
+        (backdrop.width - g.vw / s) / 2, (backdrop.height - g.vh / s) / 2, g.vw / s, g.vh / s,
+        0, 0, g.vw, g.vh,
+      );
+      ctx.restore();
+    }
+    // 工作台：有贴图就平铺，没有就退回原来那层极淡的纯色
+    ctx.save();
+    if (pattern) {
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = pattern;
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.015)';
+    }
+    ctx.fillRect(PAD, PAD + TAP - 10, g.vw - PAD * 2, g.bottom - PAD - TAP + 14);
+    ctx.restore();
     drawFaucet();
     drawDrain();
     const lv = levels();
     for (let i = 0; i < lv.length; i++) drawBucket(i, lv[i]);
+    drawParticles();
 
     if (drag && drag.action && drag.progress > 0.02) {
       const a = drag.action;
       if (a.op === FILL) {
-        const b = geom.boxes[a.i];
-        drawStream({ x: geom.tap.x + geom.tap.w / 2 + 8, y: geom.tap.y + geom.tap.h - 12 },
-          { x: b.x + b.w / 2, y: geom.bottom - geom.scale * lv[a.i] });
+        const b = g.boxes[a.i];
+        drawStream({ x: g.tap.x + g.tap.w / 2 + 8, y: g.tap.y + g.tap.h - 12 },
+          { x: b.x + b.w / 2, y: g.bottom - g.scale * lv[a.i] });
       } else if (a.op === DUMP) {
-        const b = geom.boxes[a.i];
-        drawStream({ x: b.x + b.w / 2, y: geom.bottom - geom.scale * lv[a.i] },
-          { x: geom.drain.x + geom.drain.w / 2, y: geom.drain.y + 10 });
+        const b = g.boxes[a.i];
+        drawStream({ x: b.x + b.w / 2, y: g.bottom - g.scale * lv[a.i] },
+          { x: g.drain.x + g.drain.w / 2, y: g.drain.y + 10 });
       } else {
-        const s = geom.boxes[a.i];
-        const d = geom.boxes[a.j];
+        const s = g.boxes[a.i];
+        const d = g.boxes[a.j];
         drawStream({ x: s.x + s.w / 2, y: s.y + 8 },
-          { x: d.x + d.w / 2, y: geom.bottom - geom.scale * lv[a.j] });
+          { x: d.x + d.w / 2, y: g.bottom - g.scale * lv[a.j] });
       }
     }
   }
@@ -451,6 +551,10 @@ export function createView(canvas, { onCommit } = {}) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(64, now - (last || now));
     last = now;
+    // 暂停：时钟不累加、补间不推进、粒子不寿命递减，也不重绘 —— 仿真真的停住。
+    if (paused) return;
+    const s = dt / 1000;
+    animClock += s;
     let busy = !!drag;
     if (game) {
       const tau = 1 - Math.exp(-dt / 90);
@@ -466,10 +570,12 @@ export function createView(canvas, { onCommit } = {}) {
         }
       }
     }
-    if (hint && now >= hint.until) {
+    if (hint && animClock >= hint.until) {
       hint = null;
       busy = true;
     }
+    stepParticles();
+    if (particles.length) busy = true;
     if (game && game.done) busy = true; // the winning ring keeps pulsing
     if (busy) draw();
   }
@@ -478,12 +584,47 @@ export function createView(canvas, { onCommit } = {}) {
   canvas.addEventListener('pointermove', move);
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
+  // 回落：pointer 事件不存在时（老 Safari / iOS < 13）用 touch 与 mouse 走同一条 down/move/up，
+  // 坐标仍由 localPoint 按 rect+client 换算，所以两条路径不会点出两个不同的结果。
+  if (!('onpointerdown' in canvas)) {
+    const touch = (get) => (ev) => {
+      const t = get(ev);
+      if (!t) return;
+      const fake = { clientX: t.clientX, clientY: t.clientY, pointerId: 0, preventDefault: () => ev.preventDefault() };
+      return fake;
+    };
+    const first = (ev) => (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || null;
+    canvas.addEventListener('touchstart', (ev) => down(touch(first)(ev)), { passive: false });
+    canvas.addEventListener('touchmove', (ev) => move(touch(first)(ev)), { passive: false });
+    canvas.addEventListener('touchend', (ev) => up(touch(first)(ev)), { passive: false });
+    canvas.addEventListener('touchcancel', (ev) => up(touch(first)(ev)), { passive: false });
+    canvas.addEventListener('mousedown', (ev) => down({ ...ev, pointerId: 0 }));
+    canvas.addEventListener('mousemove', (ev) => move(ev));
+    canvas.addEventListener('mouseup', (ev) => up(ev));
+  }
+
+  loadImage(BENCH_TILE, (img) => {
+    try {
+      pattern = ctx.createPattern(img, 'repeat');
+      draw();
+    } catch (err) {
+      pattern = null;
+    }
+  });
+  loadImage(BACKDROP, (img) => {
+    backdrop = img;
+    draw();
+  });
+  loadImage(DROPLET_SHEET, (img) => {
+    sheet = img;
+  });
 
   return {
     attach(next) {
       game = next;
       drag = null;
       hint = null;
+      particles = [];
       shown = Array.from(next.pos);
       measure();
     },
@@ -492,6 +633,40 @@ export function createView(canvas, { onCommit } = {}) {
     },
     measure,
     redraw: draw,
+    setPaused(on) {
+      paused = !!on;
+      if (!paused) last = 0; // 下一帧重新取基准，暂停期间攒下的墙钟差不许一次补回来
+      return paused;
+    },
+    // 重开要还回一个"刚开机"的动画侧：时钟、粒子、提示高亮全清。只调 game 的 reset()
+    // 会留下上一题的脉动相位与在飞水滴（BRIEF_COS §2 点名的那类漏项）。
+    resetClock() {
+      animClock = 0;
+      particles = [];
+      hint = null;
+      last = 0;
+      draw();
+    },
+    get paused() { return paused; },
+    // 一次动作落地时溅一小片水花。reduceMotion 下直接不产生活跃粒子。
+    splash(at, kind = 'pour', n = 7) {
+      if (!at || !prefs.motionAllowed() || paused) return 0;
+      const count = kind === 'win' ? n * 2 : n;
+      for (let i = 0; i < count; i++) {
+        const ang = jitter.span(-Math.PI * 0.9, -Math.PI * 0.1);
+        const spd = jitter.span(28, 96);
+        particles.push({
+          x: at.x, y: at.y,
+          vx: Math.cos(ang) * spd * (kind === 'dump' ? -0.6 : 1),
+          vy: Math.sin(ang) * spd,
+          g: 190,
+          born: animClock,
+          life: PARTICLE_LIFE * jitter.span(0.7, 1.25),
+          size: jitter.span(14, 26),
+        });
+      }
+      return particles.length;
+    },
     // Where an automated finger should press, in client pixels.
     bucketPoint(i) {
       if (!game || !geom.boxes[i]) return null;
@@ -520,9 +695,14 @@ export function createView(canvas, { onCommit } = {}) {
       };
     },
     showHint(action) {
-      hint = { action, until: performance.now() + 2600 };
+      hint = { action, until: animClock + 2.6 };
       draw();
     },
+    // 对拍口径（BRIEF_COS §3）：把这三样挂到 window.pour.state 上，帧率对拍才有可比字段。
+    animTime() { return Math.round(animClock * 1e6) / 1e6; },
+    shownLevels() { return shown.map((v) => Math.round(v * 1e4) / 1e4); },
+    particleCount() { return particles.length; },
+    assetsReady() { return { benchTile: !!pattern, backdrop: !!backdrop, dropletSheet: !!sheet }; },
     start() {
       if (!raf) {
         last = 0;
