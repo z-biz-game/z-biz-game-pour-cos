@@ -114,11 +114,12 @@ async function scenario(name, where, fn) {
 {
   await scenario('blank() is the shape a first-time player sees', envAbsent(), (mod) => {
     eq(mod.blank(), {
+      v: 1,
       records: {},
       daily: {},
       unlocked: 1,
       stats: { solves: 0, perfect: 0, moves: 0, hints: 0 },
-    }, 'one record bag, one daily bag, level 1 unlocked, four counters');
+    }, 'one record bag, one daily bag, level 1 unlocked, four counters, and a format version');
     const a = mod.blank();
     a.records.p1 = { solved: true };
     a.stats.solves = 99;
