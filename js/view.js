@@ -54,6 +54,19 @@ export function createView(canvas, { onCommit } = {}) {
   let drag = null; // { i, z0, target, now, action, ok, progress, over }
   let hint = null; // { action, until }
   let raf = 0;
+
+  // ---- 减弱动效（prefers-reduced-motion）----
+  // 本仓有四处随时间走的装饰：① 水流虚线 lineDashOffset 每秒推进 25px（流动的"活水"）；
+  // ② 壶嘴那滴下落的水 t=(now%1600)/1600；③ 通关后达标瓶的呼吸环（1100ms）；
+  // ④ 提示环（900ms）。四处都只改相位，不承载任何状态 —— 指向哪一步由 hint.action
+  // 决定、瓶到没到由 game.pos === comp.need 决定。
+  // 减弱动效下四处相位统统钉成固定值：水线还是水线、壶嘴还是那滴水、环还在、达标环还在，
+  // 只是不再流动。与 ferry-cos / hashi / nine-rings 同口径：相位是装饰，形状是反馈。
+  let reduceMotion = false;
+  const flowOffset = () => (reduceMotion ? -4 : -(performance.now() / 40) % 11);
+  const dripPhase = () => (reduceMotion ? 0.5 : (performance.now() % 1600) / 1600);
+  const goalPhase = () => (reduceMotion ? 0.5 : (performance.now() % 1100) / 1100);
+  const hintPhase = () => (reduceMotion ? 0.5 : (performance.now() % 900) / 900);
   let last = 0;
   let geom = {
     vw: 320, vh: 320, boxes: [], x0: 0, bw: 40, gap: 24, scale: 10,
@@ -238,7 +251,7 @@ export function createView(canvas, { onCommit } = {}) {
     ctx.strokeStyle = 'rgba(96, 190, 232, 0.8)';
     ctx.lineWidth = 3;
     ctx.setLineDash([6, 5]);
-    ctx.lineDashOffset = -(performance.now() / 40) % 11;
+    ctx.lineDashOffset = flowOffset();
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
     ctx.quadraticCurveTo((from.x + to.x) / 2, Math.min(from.y, to.y) + 10, to.x, to.y);
@@ -276,7 +289,7 @@ export function createView(canvas, { onCommit } = {}) {
     ctx.lineTo(cx + 20, y + 6);
     ctx.stroke();
     // a drip so the zone reads as "water comes out of here"
-    const t = (performance.now() % 1600) / 1600;
+    const t = dripPhase();
     ctx.fillStyle = `rgba(120, 200, 240, ${(0.7 - t * 0.5).toFixed(3)})`;
     ctx.beginPath();
     ctx.arc(cx + 8, spout + 4 + t * 20, 2.4, 0, Math.PI * 2);
@@ -396,7 +409,7 @@ export function createView(canvas, { onCommit } = {}) {
       Math.min(geom.bottom - 6, Math.max(b.y + 22, geom.bottom - Math.max(0, geom.scale * lvl) + 24)));
 
     if (game.done && comp.goal[i] && game.pos[i] === comp.need) {
-      const t = (performance.now() % 1100) / 1100;
+      const t = goalPhase();
       ctx.strokeStyle = `rgba(120, 220, 255, ${(0.9 - t * 0.6).toFixed(3)})`;
       ctx.lineWidth = 3 + t * 3;
       roundBottom(ctx, b.x - 5 - t * 5, b.y - 5 - t * 5, b.w + 10 + t * 10, b.h + 10 + t * 5, r + 6);
@@ -409,7 +422,7 @@ export function createView(canvas, { onCommit } = {}) {
       ctx.stroke();
     }
     if (hint && hint.action && (hint.action.i === i || hint.action.j === i)) {
-      const t = (performance.now() % 900) / 900;
+      const t = hintPhase();
       ctx.strokeStyle = `rgba(224, 166, 60, ${(0.9 - t * 0.55).toFixed(3)})`;
       ctx.lineWidth = 2 + t * 4;
       roundBottom(ctx, b.x - 4 - t * 6, b.y - 4 - t * 6, b.w + 8 + t * 12, b.h + 8 + t * 6, r + 6);
@@ -480,6 +493,16 @@ export function createView(canvas, { onCommit } = {}) {
   canvas.addEventListener('pointercancel', up);
 
   return {
+    // The gate the runtime pref flip lands on: idempotent, repaints so the water settles on the
+    // same frame the setting changes rather than at the next repaint.
+    setReduceMotion(v) {
+      const on = !!v;
+      if (on === reduceMotion) return reduceMotion;
+      reduceMotion = on;
+      if (reduceMotion) draw();
+      return reduceMotion;
+    },
+    isReducedMotion: () => reduceMotion,
     attach(next) {
       game = next;
       drag = null;
