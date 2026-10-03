@@ -49,6 +49,29 @@
       <thead><tr><th>桶</th><th>容量</th><th>当前</th><th>目标</th></tr></thead>
       <tbody></tbody>
     </table>
+
+    <!--
+      玩法说明。引擎里没有规则文字表可复用（js/core/jug.js 只导出 describe()，那是"这一手
+      动作怎么说"的短句，不是规则），所以下面每一条都对着代码写，出处点名到行：
+        · 目标＝把目标桶恰好装到 need（=== 不是 >=）  → jug.js isGoal() 145-150
+        · 三个动作与三个拖放落点                      → jug.js 23-25 / apply() 100-115；
+                                                        view.js actionOf() 160-171
+        · 互倒倒到"源空"或"目标满"为止               → jug.js apply() 109 的 Math.min
+        · 没有半倒                                    → jug.js 9-14（桶无刻度，"一半"不是状态）
+        · 不变水不计步                                → jug.js effective() 121-125 + game.js act() 52
+        · 星级三档                                    → game.js grade() 101-105（只读 moves 与 par）
+        · 提示只走烘焙路线、离开路线不重搜            → game.js hint() 90-97
+        · 快捷键 u/h/r/F/Esc                          → main.js 391-398 与 519-527
+    -->
+    <details class="about">
+      <summary>玩法</summary>
+      <p><b>目标</b>：把容量表里高亮的那只桶——<b>目标</b>列写着要量的数——恰好装到那个数，就算量出来了。</p>
+      <p><b>三个落点、三个动作</b>：桶拖到顶部<b>龙头</b>＝接满，拖到右下<b>下水道</b>＝倒掉，拖到<b>另一只桶</b>＝互倒。互倒会一直倒到<b>源桶见底</b>或<b>目标桶见满</b>为止；桶上没有刻度，所以没有"倒一半"这个动作。</p>
+      <p><b>不变水不计步</b>：满桶再接满、空桶再倒掉、往已经满的桶里倒，都不算一步、也不改一滴水——画布下方的提示行会直说"什么也没变，不计步"。</p>
+      <p><b>星级</b>：步数正好等于面板上的<b>最少</b>是 ★★★，多 1–3 步 ★★，再多 ★。</p>
+      <p><b>快捷键</b>：<code>u</code> 撤销、<code>h</code> 提示、<code>r</code> 重开、<code>F</code> 全屏、<code>Esc</code> 关掉通关卡。提示只沿构建期量好的那条路线给下一步；一旦走出那条路线，它会照实说"不在认证路线上"，<b>不会</b>现场重搜——撤销回去，或者重开。</p>
+    </details>
+
     <p class="theorem" id="theorem"></p>
     <div class="controls">
       <button type="button" id="undo">撤销</button>
