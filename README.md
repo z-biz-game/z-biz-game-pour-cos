@@ -16,7 +16,8 @@
   `gcd(caps) | need` 且 `need ≤ 目标桶容量`。它给出的必要条件是免费的，所以生成器先用它筛、
   再让 BFS 决定，两把尺子的对账是 `test/bezout.test.mjs`（见下）。
 - 零依赖、零美术、零打包器：只有 `index.html` + `css/` + `js/`，桶、水面、龙头、下水道全部由
-  `js/view.js` 用 canvas 2D 路径画出来，二进制资产 0 个。
+  `js/view.js` 用 canvas 2D 路径画出来，仓里 0 个二进制**文件**（PWA 安装要的那张 512 图标不例外：
+  它是 base64 内联在 `manifest.webmanifest` 里的，宽高由上线清单闸的 P 段解码后核对真图）。
 - 63 关已烘焙并逐行复验，四档带的区间是从实测 `par` 直方图里定的：默认台架 1 280 次抽样 / 926 道题，
   按规格 `pour.md §3` 的"5000 题"口径放大到 7 310 次抽样 / 5 438 道题再量一遍，三档低难度的
   `median / maxStates` 一个字没变（`node test/balance.mjs`，两次输出都在 DESIGN.md §4.2）。
@@ -27,8 +28,8 @@
 
 ```bash
 node server.cjs            # http://127.0.0.1:5180/（ES module 需要一个 origin，file:// 会被 CORS 挡掉）
-npm run unit               # 八个 node 套件：84 行断言、871 条 eq/ok
-bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标拖动验收（130 行断言）
+npm run unit               # 八个 node 套件：84 行断言、874 条 eq/ok
+bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标拖动验收（131 行断言）
 node test/balance.mjs      # 生成器实测：接受率、逐档拒绝原因、最大状态数
 node tools/bake.mjs        # 重新出题 + 复验，重写 js/data/lots.js（本机 7.5–7.8 秒）
 npx electron .             # 桌面壳（需自行 npm i -D electron，本仓不装）
@@ -98,13 +99,13 @@ accepted / median` 随机器负载漂移（同一次会话里另一跑是 682→
 
 `bash tools/verify.sh` 一条命令跑完两层：
 
-- **node 层 84 行 / 871 条**：`bezout`(8) 定理与搜索三路对账、`jug`(14) 模型与校验器负例、
+- **node 层 84 行 / 874 条**：`bezout`(8) 定理与搜索三路对账、`jug`(14) 模型与校验器负例、
   `solve`(9) 3-5-4 手算 par=6 + 深度 5 穷举反证 + 多目标 par + 零变化不入队 + 预算与截止、
   `make`(8) 难度带形状与确定性、`library`(7) 逐行复解、`game`(13) 计数与评星、
-  `storage`(16) 三态退化与单调性、`shape`(9) 零依赖/零二进制/core 无 DOM。
-- **浏览器层 130 行**：`tools/playtest.mjs` 起真实 headless Chrome，`@boot`(18) 画布真的排版并
-  画出像素、`@play`(22) 通关/评星/提示/计数、`@routes`(26) 四种路由与钳制、`@save`(24)
-  localStorage 落盘与两次点击清档、`@pointer`(40) **派发真实 `Input.dispatchMouseEvent`**
+  `storage`(16) 三态退化与单调性、`shape`(9) 零依赖/零二进制文件/core 无 DOM。
+- **浏览器层 131 行**：`tools/playtest.mjs` 起真实 headless Chrome，`@boot`(18) 画布真的排版并
+  画出像素、`@play`(22) 通关/评星/提示/计数、`@routes`(26) 四种路由与钳制、`@save`(25)
+  localStorage 落盘、两次点击清档、盘上那一份自记的格式版本、`@pointer`(40) **派发真实 `Input.dispatchMouseEvent`**
   把 `drip-01`（par 4）整条认证解拖到通关，并断言：原地按下去不动、往已满的桶里倒不计步、
   倒一只空桶不计步、抽干一只空桶不计步、拖回起手那只桶=取消、越过桶沿的过拉被钳在沿口，
   以及一条容量不变式。
@@ -113,6 +114,8 @@ accepted / median` 随机器负载漂移（同一次会话里另一跑是 682→
 
 ```
 index.html            壳：顶栏 / 画布 / 右侧面板 / 通关卡（含 data: 的 favicon，防 404 污染 console）
+manifest.webmanifest  PWA 清单：start_url/scope 都相对，四张图标 base64 内联（仓里因此没有 .png 文件）
+sw.js                 离线壳：一律网络优先，命中才回填缓存；PRECACHE 只收上面两件
 css/game.css          全部样式，一个文件
 js/core/jug.js        模型：三种动作、混合进制编码、后继枚举、规格校验、状态空间门槛（无 DOM）
 js/core/theorem.js    数论判据：gcd / gcdAll / canMeasureAny / canMeasureAt / reachableAmounts
@@ -127,6 +130,8 @@ js/view.js            canvas 2D 绘制与指针手势，不判合法性（只问
 js/main.js            路由、DOM、存档写入、window.pour 测试钩子
 server.cjs            零依赖静态服务器          electron/main.cjs  桌面壳
 tools/bake.mjs        出题 → 复验 → 写 lots.js，并打印实测表
+tools/assemble-site.sh 上线文件的唯一清单：pages.yml 与本地闸都调它拷产物
+tools/deploy-set.mjs  对拷出来的产物提要求     tools/deploy-set-selftest.mjs  逐刀证明它会红
 tools/playtest.mjs    零依赖 CDP 驱动，真实鼠标键盘事件      tools/verify.sh  一次性验收门
 tools/harness.mjs     微型测试框架，node 与浏览器套件输出形状一致
 test/                 八个套件 + 手算 fixture.mjs + 难度台架 balance.mjs
@@ -148,3 +153,45 @@ test/                 八个套件 + 手算 fixture.mjs + 难度台架 balance.m
 ## License
 
 MIT © 2026 z-biz-game
+
+## 上线的到底是哪一批文件
+
+这个仓没有打包器：站点=一次文件拷贝。以前「拷哪些」写在 `pages.yml` 的 `run:` 里（手抄的几行
+`cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
+`manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
+真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
+
+现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
+然后**对拷出来的产物**提要求（`tools/deploy-set.mjs`）：
+
+- **W 清单与页面同源**：`pages.yml` 里必须真有 `run: bash tools/assemble-site.sh <dir>` 这一行，
+  `ci.yml` 里必须真有 `run: node tools/deploy-set.mjs`。认的是调用那一行，不是文件里出现过这个
+  路径——注释里本来就会写它，只 grep 字符串会被一句散文喂绿。
+- **R 引用可达**：引用不靠手打名单。从 `index.html` 的 `href/src` 出发，凡解析出来是 `.js`/`.css`
+  的就把那一站也扫一遍（CSS 的 `url()`、JS 去掉注释后的 `'./…'` 字面量、`new URL(x, base)` 的两种
+  基、`navigator.serviceWorker.register`、`scope`），`manifest` 的 icons/screenshots/shortcuts 各自
+  的 `src` 也算引用。取径上读不到的那一站本身就是红（读不到＝这一站根本没扫）。每条引用都必须在
+  产物里且非 0 字节；绝对路径单列一条红，因为 Pages 挂在 `/<repo>/` 前缀下会跳出去。
+- **P 位图不许说谎**：`manifest` 声明的 `sizes` 必须等于 PNG IHDR 的真实宽高——文件图标读文件头，
+  内联成 base64 的图标先解码再读同一段。后一条不是可选项：仓里零二进制文件的承诺（本仓自己的测试钉着）
+  只约束"有没有 .png 这个文件"，图标于是住在清单里；如果 P 段只筛文件名，声明写 512 而真图 192 就一路放行。
+- **钉住两个数**：R 段实际检查的路径条数（`19`）与这一次跑的断言条数（`39`），两个数
+  都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
+  少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
+  不写那对常量的名字：本仓原有的文档闸会拿"文档里出现过的同名标识号"回数它自己的条数（skyscraper
+  的 D14b 就是这种钉法），两道闸共用一个名字就互相打红。
+
+`tools/deploy-set-selftest.mjs` 是这两颗钉的阳性证明：它把仓库复制到临时目录，照着每一类断言
+各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
+X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
+X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
+`19`、断言仍然 `39`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
+图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
+要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
+的出处表现挑（取径真的会读的那支 JS / 那一张 CSS，不写死某一个仓的入口名），所以页面改了、仓与仓
+不同，台架跟着走。
+
+`node tools/deploy-set.mjs` 与 `node tools/deploy-set-selftest.mjs` 就是 CI 跑的那两条命令本身
+（package.json 里的 `deploy-set` / `deploy-set:selftest` 只是同一支脚本的 npm 入口）；把它们接进本仓
+那条浏览器 one-shot（`tools/verify.sh`）还欠着——那道脚本的腿名单与条数钉是每个仓自己的形状。

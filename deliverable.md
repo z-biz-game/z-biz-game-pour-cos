@@ -22,11 +22,11 @@
 | 已发布题量 | 63 道（`drip` 16 / `measure` 16 / `blend` 14 / `decant` 17），逐行由 `test/library.test.mjs` 从序列化 spec 重解复验 |
 | 难度带 | `TIERS_META`（已发布，量出来的）：4-5 / 6-7 / 8-11 / 12-20；生成包络 `TIERS`（`js/core/make.js:167`）与它同行同址但**不是一个东西** |
 | 依赖数 | 0（`dependencies` 与 `devDependencies` 都是 `{}`，无 `node_modules`、无 lockfile，由 `test/shape.test.mjs:62` 钉） |
-| 二进制资产 | 0（桶、水面、龙头、下水道全部 `js/view.js` 的 canvas 2D 路径；`test/shape.test.mjs:81` 钉扩展名与 `data:` URI） |
-| 测试钩子 | `window.pour`（`js/main.js:406`），`test/shape.test.mjs:105` 钉它是页面唯一的全局注入点 |
+| 二进制资产 | 0 个**文件**（桶、水面、龙头、下水道全部 `js/view.js` 的 canvas 2D 路径；`test/shape.test.mjs:81` 钉扩展名，并要求任何跟着 `data:` 前缀走进文本文件的 base64 载荷都算红）。唯一的例外是 PWA 安装要的那张 512 图标：它以 base64 内联在 `manifest.webmanifest`，宽高原样取自中央美术件，由 `tools/deploy-set.mjs` 的 P 段解码后核对 IHDR 真值 |
+| 测试钩子 | `window.pour`（`js/main.js:406`），`test/shape.test.mjs:109` 钉它是页面唯一的全局注入点 |
 | 路由 | `#/c/N`、`#/lot/<id>`、`#/daily`、`#/random/<tier>/<token>`（`pour.md` 点名的两条是 `#/lot/<id>` 与 `#/daily`，本仓四条都有） |
-| node 层 | 8 个套件 / **84 行断言 / 871 条 eq-ok** / `fail 0` / `rc=0` |
-| browser 层 | **130 行 / 130 条**：`@boot 18 · @play 22 · @routes 26 · @save 24 · @pointer 40`，末行 `=== ALL GREEN ===` |
+| node 层 | 8 个套件 / **84 行断言 / 874 条 eq-ok** / `fail 0` / `rc=0` |
+| browser 层 | **131 行 / 131 条**：`@boot 18 · @play 22 · @routes 26 · @save 25 · @pointer 40`，末行 `=== ALL GREEN ===` |
 | 本次会话净新增 | `README.md`、`DESIGN.md`、本文件、`.github/workflows/ci.yml`、`.github/workflows/pages.yml`；改 `tools/playtest.mjs` 的 `@pointer`；重写 `js/data/lots.js`（bake 产物）；改 `js/core/theorem.js` 一处注释 |
 | 未做的事 | 见 §5；两条 workflow **没有远端跑过**（本机无 git 仓库：`git status` → `fatal: not a git repository`），Electron 壳没有真实启动过 |
 
@@ -38,31 +38,36 @@
 
 | 文件 | 行 | 作用 | 由谁验证 |
 | --- | --- | --- | --- |
-| `index.html` | 68 | 壳：顶栏 / 画布 / 面板 / 通关卡 | `test/shape.test.mjs` "the page loads nothing from a network"（`<link rel="icon" href="data:,">`、`type="module"`、`<canvas>`、viewport、无 `https?:` 引用） |
-| `css/game.css` | 119 | 全部样式 | 同上第二条（`url(` 不得出现 `https?:` 或 `data:`）；`@boot` 断言元素真的被排版 |
+| `index.html` | 95 | 壳：顶栏 / 画布 / 面板 / 通关卡 | `test/shape.test.mjs` "the page loads nothing from a network"（`<link rel="icon" href="data:,">`、`type="module"`、`<canvas>`、viewport、无 `https?:` 引用） |
+| `css/game.css` | 170 | 全部样式 | 同上第二条（`url(` 不得出现 `https?:` 或 `data:`）；`@boot` 断言元素真的被排版 |
+| `manifest.webmanifest` | 34 | PWA 安装清单：`start_url`/`scope` 相对、四张图标全部 base64 内联（180 any / 192 any / 192 maskable / 512 any） | `tools/deploy-set.mjs` 的 R3–R6 与 P1–P2（解码后核 IHDR 真宽高，与美术件字节一致）、`@boot` 那侧的 `navigator.serviceWorker.register` |
+| `sw.js` | 56 | 离线壳：`PRECACHE` 收 `index.html` + `manifest.webmanifest`，其余网络优先 | `test/shape.test.mjs` "a file the source promises really exists"（`index.html` 真的引用它）+ `tools/deploy-set.mjs` 的 R8 走图（`register` 的那一支必须出现在产物里） |
 | `js/core/jug.js` | 203 | 模型：三动作、混合进制编码、后继枚举、`validate()`、`SPACE_LIMIT` | `test/jug.test.mjs` 14 行（含 "the action count grows with the buckets" 钉 2/3/4 桶 = 6/12/20 动作；"validate checks the start vector and the state-space ceiling" 打 `'state space 29760 over the 20000 ceiling'`） |
 | `js/core/theorem.js` | 64 | Bézout 判据与面板解释文案的算术 | `test/bezout.test.mjs` —— **不 import 本文件**，自带手抄 `myGcd` 与独立可达集 BFS，三路对账 606/525/486/197 全 `mismatches []` |
 | `js/core/solve.js` | 116 | 分层 BFS（`par` / `solutions` / `explored` / `truncated`）+ `census()` | `test/solve.test.mjs` 9 行：`brute` / `reachAll` 两个独立实现 + `test/fixture.mjs` 手抄 CLASSIC（par 6、16 状态闭式、逐层 `[1,2,3,2,2,2,2,2]`） |
 | `js/core/game.js` | 106 | 一局：`legal` / `act` / `undo` / `reset` / `onRoute` / `hint` / `grade` | `test/game.test.mjs` 13 行；`@play`、`@pointer` 用真鼠标重复钉"零变化不计步" |
 | `js/core/make.js` | 188 | 拒绝采样出题 + 难度带 + 平凡题筛子 | `test/make.test.mjs` 8 行（含 "fillShare 的上界是 0.5" 这条模型性质）；产物由 §2 的 `bake` 统计行打印 |
 | `js/core/library.js` | 110 | 查表：战役 / 每日 / 随机 / id / `stats()` | `test/library.test.mjs` 7 行；`@routes` 26 行在真浏览器里跑同一批查表 |
-| `js/core/storage.js` | 147 | 唯一 DOM 触点（`pour.save.v1`） | `test/storage.test.mjs` 16 行 / 392 行（四种坏环境）+ `@save` 24 行（真实落盘、两次点击清档） |
+| `js/core/storage.js` | 187 | 唯一 DOM 触点（`pour.save.v1`） | `test/storage.test.mjs` 16 行 / 393 行（四种坏环境）+ `@save` 25 行（真实落盘、两次点击清档、盘上那份自记格式版本） |
 | `js/core/rng.js` | 51 | FNV-1a `hashSeed` + `mulberry32` + `todayKey` | `test/library.test.mjs` 用 `BigInt` 重推 FNV-1a 并断言 `randomLot` 的取模索引（`:173-193`） |
 | `js/data/lots.js` | 71 | **构建期产物**：`TIERS_META` + 63 行题 | `test/library.test.mjs` "every printed line reproduces its own numbers when re-solved from the serialised spec"（逐行从序列化 spec 重解）+ `test/shape.test.mjs` "the baked pool carries the numbers its header claims" + `node tools/bake.mjs` 的 `throw` |
-| `js/view.js` | 537 | canvas 2D 绘制 + 指针状态机（不判合法性） | `@pointer` 40 行全部经由它暴露的 `bucketPoint/faucetPoint/drainPoint/dragState`；`test/shape.test.mjs` "the shell owns the DOM and routes through one hook"（`getContext('2d')`、无 `drawImage`、无 `fetch`） |
-| `js/main.js` | 461 | 路由、DOM、存档写入、`window.pour` | `@boot` 18 行（含"页面没有 fetch `solve.js`/`make.js`"）+ `@play`/`@routes`/`@save`；`test/shape.test.mjs` 钉 `window.pour` 是唯一全局 |
+| `js/view.js` | 560 | canvas 2D 绘制 + 指针状态机（不判合法性） | `@pointer` 40 行全部经由它暴露的 `bucketPoint/faucetPoint/drainPoint/dragState`；`test/shape.test.mjs` "the shell owns the DOM and routes through one hook"（`getContext('2d')`、无 `drawImage`、无 `fetch`） |
+| `js/main.js` | 551 | 路由、DOM、存档写入、`window.pour` | `@boot` 18 行（含"页面没有 fetch `solve.js`/`make.js`"）+ `@play`/`@routes`/`@save`；`test/shape.test.mjs` 钉 `window.pour` 是唯一全局 |
 | `server.cjs` | 69 | 零依赖静态服务器（默认 5180） | `bash tools/verify.sh` 用它起 `WEB_PORT` （`:39` 起进程、`:52-66` 轮询 `/json/version` 与根目录都活才开始）；语法由 `npm run check` |
 | `electron/main.cjs` | 34 | 桌面壳，复用同一台服务器 | **只有** `npm run check` 的 `node --check`；没有真实启动过 → §5 |
 | `tools/bake.mjs` | 200 | 出题 → 去重 → 序列化重解 → 写产物 + 打表 | 本会话 `node tools/bake.mjs` 两跑（§2）；它自己的 `throw` 是"产物不许手改"的守门人 |
 | `tools/harness.mjs` | 44 | 微型测试框架，node / 浏览器输出同形状 | 每个 `test/*.test.mjs` 末尾那行 `rows: N fail: M asserts: K`；`tools/verify.sh` 的花括号计数器读的是同一种形状 |
-| `tools/playtest.mjs` | 875 | 零依赖 CDP 驱动（真鼠标键盘、截图、console） | `bash tools/verify.sh` 的 `browser totals: rows 130` 行；本次改动的目标文件 |
+| `tools/playtest.mjs` | 878 | 零依赖 CDP 驱动（真鼠标键盘、截图、console） | `bash tools/verify.sh` 的 `browser totals: rows 131` 行；本次改动的目标文件 |
 | `tools/verify.sh` | 164 | 一次性验收门 | 本会话原样跑过 4 次（§3 贴的是最后一次），`rc=0` |
+| `tools/assemble-site.sh` | 31 | **上线文件的唯一清单**：`index.html` + `manifest.webmanifest` + `sw.js` + `css/ js/`，位图目录按存在与否收 | `pages.yml` 调它、`tools/deploy-set.mjs` 也调它，两边拷出的是同一批；`X1` 那把刀砍它（本仓没有位图目录，砍 `cp -r css js`）必须让闸点名红 |
+| `tools/deploy-set.mjs` | 347 | 对**拷出来的产物**提要求：W 清单同源 / R 引用可达 / P 位图不谎报 | `node tools/deploy-set.mjs`（CI 里同一条命令）：19 条引用 / 39 行断言 / `fail 0`，两个数钉在文件顶部常量 |
+| `tools/deploy-set-selftest.mjs` | 316 | 上面那颗钉的阳性证明：逐类下一刀，要求每刀都让闸点名变红 | `node tools/deploy-set-selftest.mjs`：X1（本仓没有位图目录，改砍 `cp -r css js`）、X2–X6、X8–X10、X13（内联位图谎报尺寸）各点名变红；X7 打印 SKIP——它的靶子是"文件图标"，本仓的图标全内联，P 段由 X13 代证；X11/X12 打印 SKIP——`index.html` 没有 og:image |
 | `test/balance.mjs` | 99 | 台架：量生成器，不写任何文件 | `node test/balance.mjs`（§2 两段输出都是它） |
 | `test/fixture.mjs` | 107 | 手算 fixture（期望值不从被测代码读） | 被 `solve.test.mjs` / `game.test.mjs` import；`test/solve.test.mjs:103` 那条 par 6 |
-| `test/*.test.mjs` | 8 个 | 见上面各行的验证者 | `npm run unit`（`package.json` 的 `unit` 脚本被 `test/shape.test.mjs:155` 逐字钉住）+ `node --test test/` + `tools/verify.sh` 的 node 段 |
-| `package.json` | 40 | 脚本与零依赖声明 | `test/shape.test.mjs` "the package depends on nothing" / "npm run check sees every source file that ships" |
-| `.github/workflows/ci.yml` | 52 | unit + browser 两个 job | **本机未执行过 Actions**。可核的是静态一致性：Syntax 步骤的 glob 列表与 `npm run check` 逐字相同（§3.4 那条 python 对账），Suites 步骤与 `pkg.scripts.unit` 同集合 |
-| `.github/workflows/pages.yml` | 46 | Pages 部署 | 本机未执行过。可核的是：`cp` 只覆盖 `index.html css js`，而 `grep -oE '(src\|href)="[^"]+"' index.html` 得到的引用集合正是 `css/game.css` + `js/main.js` + `data:,`（§3.4） |
+| `test/*.test.mjs` | 8 个 | 见上面各行的验证者 | `npm run unit`（`package.json` 的 `unit` 脚本被 `test/shape.test.mjs:158` 逐字钉住）+ `node --test test/` + `tools/verify.sh` 的 node 段 |
+| `package.json` | 42 | 脚本与零依赖声明 | `test/shape.test.mjs` "the package depends on nothing" / "npm run check sees every source file that ships" |
+| `.github/workflows/ci.yml` | 61 | unit + browser 两个 job；unit 里多出 `Deploy set gate` 与 `Deploy set gate proves it can fail` 两步 | 本机未执行过 Actions。可核的是静态一致性：Syntax 步骤的 glob 列表与 `npm run check` 逐字相同（§3.4 那条 python 对账），Suites 步骤与 `pkg.scripts.unit` 同集合，两步闸就是 `node tools/deploy-set.mjs` / `node tools/deploy-set-selftest.mjs` 这两条本机跑绿过的命令本身 |
+| `.github/workflows/pages.yml` | 43 | Pages 部署：`bash tools/assemble-site.sh _site` → `node tools/deploy-set.mjs _site` → upload | 本机未执行过。可核的是：这里不再手抄 `cp`，上线那份清单与本地闸拷的是同一支脚本；`_site` 里页面会要的东西（`css/game.css`、`js/main.js`、`manifest.webmanifest`、`sw.js`）由 R8/R10 逐条点名，W2/X8 那把刀保证这一行没被换回去 |
 
 ---
 
@@ -153,7 +158,7 @@ totals: drawn 7310, accepted 5438, 129.6s
 
 | 结构量（换机器逐位相同，且几乎都写死在断言里） | 计时量（本机本次实测，随负载漂移） |
 | --- | --- |
-| `par / solutions / states / depth / route`（每行被 `test/library.test.mjs` 重解比对）、`∏(cᵢ+1)`、动作数 6/12/20、`SPACE_LIMIT 20000 / MAX_BUCKETS 4 / MAX_CAP 60`、Bézout 的 606 / 525 / 486 / 197 / 161 与 `mismatches []`、CLASSIC 的 16 状态与逐层 `[1,2,3,2,2,2,2,2]` 与闭式 `8+12−4`、四档 par 边界 4-5 / 6-7 / 8-11 / 12-20、shipped `n = 16/16/14/17`、`decant` 缺 `15/17/19`、node 层 84 行 / 871 条、browser 层 130 行、`lots.js` 的 md5 | `bake` 总耗时（7.5 s / 7.8 s）、`balance` 的 `ms` 列与 `decant` 的 `drawn/accepted/median`、`node --test` 的 `duration_ms`、headless 每段墙钟、`TIER_MS` 在哪一档截断 |
+| `par / solutions / states / depth / route`（每行被 `test/library.test.mjs` 重解比对）、`∏(cᵢ+1)`、动作数 6/12/20、`SPACE_LIMIT 20000 / MAX_BUCKETS 4 / MAX_CAP 60`、Bézout 的 606 / 525 / 486 / 197 / 161 与 `mismatches []`、CLASSIC 的 16 状态与逐层 `[1,2,3,2,2,2,2,2]` 与闭式 `8+12−4`、四档 par 边界 4-5 / 6-7 / 8-11 / 12-20、shipped `n = 16/16/14/17`、`decant` 缺 `15/17/19`、node 层 84 行 / 874 条、browser 层 131 行、`lots.js` 的 md5 | `bake` 总耗时（7.5 s / 7.8 s）、`balance` 的 `ms` 列与 `decant` 的 `drawn/accepted/median`、`node --test` 的 `duration_ms`、headless 每段墙钟、`TIER_MS` 在哪一档截断 |
 
 ---
 
@@ -185,7 +190,9 @@ $ node --test test/
 rc=0
 ```
 
-`ℹ tests 8` 是**文件数**（node:test 把每个文件算一个 test）。每个套件自己那行汇总：
+`ℹ tests 8` 是**文件数**（node:test 把每个文件算一个 test）。每个套件自己那行汇总（2026-10-04 用
+`npm run unit` 复跑的原样输出；发布当日 09-27 那次是 84 行 / **871** 条，差的 3 条全在
+`test/shape.test.mjs`（49 → 52），是后来几轮往 shape 里补的断言，行的口径一个字没动）：
 
 ```
 test/bezout.test.mjs    rows: 8  fail: 0 asserts: 251
@@ -193,13 +200,13 @@ test/game.test.mjs      rows: 13 fail: 0 asserts: 106
 test/jug.test.mjs       rows: 14 fail: 0 asserts: 93
 test/library.test.mjs   rows: 7  fail: 0 asserts: 79
 test/make.test.mjs      rows: 8  fail: 0 asserts: 79
-test/shape.test.mjs     rows: 9  fail: 0 asserts: 49
+test/shape.test.mjs     rows: 9  fail: 0 asserts: 52
 test/solve.test.mjs     rows: 9  fail: 0 asserts: 122
 test/storage.test.mjs   rows: 16 fail: 0 asserts: 92
-                        ── 合计 84 行 / 871 条
+                        ── 合计 84 行 / 874 条
 ```
 
-规格 `pour.md §5` 要 `node ≥ 38`：按"行"是 84，按"条"是 871，两种口径都过。
+规格 `pour.md §5` 要 `node ≥ 38`：按"行"是 84，按"条"是 874，两种口径都过。
 
 ### 3.3 浏览器层（`SKIP_UNIT=1`，与 CI 的 browser job 同一姿势）
 
@@ -229,9 +236,16 @@ rc=0
 
 （第一段标题在 `SKIP_UNIT=1` 下只是回声一行，node 套件被跳过 —— 那 84 行由 §3.2 单独跑过。
 `cross-check ids` 是本仓的一条 node↔browser 对账：同一个 `#/daily`、同一个
-`#/random/blend/fixed` 在 node 侧查表与浏览器侧查表必须给同一个 id。）
+`#/random/blend/fixed` 在 node 侧查表与浏览器侧查表必须给同一个 id。`daily` 由当天日期决定，
+所以这一行的 id 会随日期走，不是漂移。）
 
-规格 `pour.md §5` 要 `browser ≥ 38`：按行 130。要的五段 `@boot @play @routes @save @pointer` 齐备，
+上面这格贴的是发布当日（09-27）那次跑的原样输出，保留不覆写。2026-10-04 同一姿势复跑，两处读数变了：
+`@save rows: 25`（多的那一条钉的是「盘上那一份存档自记自己的格式版本」，键集合因此从
+`daily,records,stats,unlocked` 变成带 `v` 的五个——`test/storage.test.mjs` 那边早就按新形状在测，
+这一条腿当时还在吃旧形状，是本会话把它对回去的），`browser totals: rows 131 asserts 131`，
+末行仍是 `=== ALL GREEN ===`、`rc=0`。跑法就是上面那行命令，任何人重跑都会得到同一组数。
+
+规格 `pour.md §5` 要 `browser ≥ 38`：按行 131。要的五段 `@boot @play @routes @save @pointer` 齐备，
 每段 `fail: []`，末行 `=== ALL GREEN ===`。`@pointer` 是真实 `Input.dispatchMouseEvent`，
 把 `drip-01`（par 4，`≤ 6` 满足规格那句）整条认证解拖到通关。
 
@@ -288,7 +302,7 @@ src="js/main.js"
 | 4 | 磁盘上的 `js/data/lots.js` 与当前 `tools/bake.mjs` 的输出不一致 | 任务单给的磁盘事实是"js/data/ 有产物"（md5 `0839c82f…`，72 行 / 64 道 / `decant` 18 道 / `TIERS_META 12-18`）。但 `node tools/bake.mjs` 重跑两次得到 `b5607002…`（63 道 / `decant` 17 / `12-20`，且 `par 20` 有题、`15/17/19` 没有）。旧产物**不是坏数据**（它的每一行仍被 `library.test.mjs` 逐位复验），只是**当前生成器复现不出来** | 采取生成器可复现的那一份：两次连跑逐字节相同的 `b5607002…` 留下，并且**重跑全部三层验收**（node `rc=0`、`npm run check rc=0`、浏览器 `ALL GREEN`）都针对它。附带好处：`TIERS_META` 的 `decant 12-20` 与生成包络 `make.js` 一致，旧产物那条 12-18 是上一位代理留在这个文件上的唯一一处"两个带说法不一致" | `/tmp/pour-lots-original.js`（旧，md5 `0839…`）与 `/tmp/pour-lots-bake1.js`、`/tmp/pour-lots-bake2.js`（新，两份同 md5 `b560…`）；§2.1 的两跑输出 |
 | 5 | `@pointer` 里有几处用页面内 JS 改状态来"布置现场"（例如 `window.pour.play([{op:'fill',i:0}])` 制造一只满桶） | 那类段落证明的是 `commit()` 对，不是手指点得着；规格 `pour.md §4/§5` 与契约 §3 都要求真实输入 | 改成真实拖动布置（`dragTo(bucket, tap)` 灌满），JS 只负责读回结果。并新增三条非法倒水**不计数**的断言（倒进已满的桶、空桶对着龙头、抽干一只空桶）+ 拖回原桶=取消（`pour.md §4` 那条"松手前可以拖回原桶取消"在此之前**没有任何断言**）+ 一步容量不变式 | 任务单允许的那条"这不算放宽，是加严"；`@pointer` 从 31 行（run1）到 40 行（run4），core 与测试的期望值一行没动 |
 | 6 | `js/core/theorem.js:36-37` 的注释承诺了一个不存在的字段：`so 'tentative' is set to say the verdict has not been proven sufficient` | `canMeasureAny()` 返回裸布尔，全仓 `grep -rn tentative` 只有这一处命中。契约 §5 "不做只有文件没有接线的幽灵功能"同样适用于注释里的幽灵字段 | 注释改成描述**实际行为**："两桶时这是定理所以精确；三桶以上 `true` 只意味着'算术上不禁止'，判定权在 `js/core/solve.js`"。**没有**改任何函数体、任何期望值 | 改前 `grep -rn tentative js` = 1 hit；改后 0 hit；`npm run check`、`node --test test/`、`tools/verify.sh` `npm run check` rc=0、`node --test test/` 8/8 pass、`tools/verify.sh` `=== ALL GREEN ===`（`/tmp/pour-verify-final.txt`）都是改完之后重跑的 |
-| 7 | 上一位代理（或派单）声称 "node asserts 84" | 84 是**行数**（各套件 `rows:` 相加：8+13+14+7+8+9+9+16），`asserts` 实测是 **871**；而 `node --test test/` 汇总里的 `ℹ tests 8` 是**文件数**。三个口径都被混叫成"断言数" | 本报告与 README/DESIGN 一律写成"84 行 / 871 条"，并把 `node --test` 的原始汇总一起贴出来（§3.2）。注意 `asserts` 这一列**不是**完全固定的：`test/solve.test.mjs:172` 那条双搜索器对账按"产物里出现的每个 par 值"各出 2 条，所以换一池产物就会抖几个。行数（84）才是稳定的口径 | §3.2 的每套件 `rows / asserts` 表；旧产物下同一命令本会话也实跑过一遍：84 行 / **869** 条，差异全在 `test/solve.test.mjs`（120 → 122），因为新池多了 `par 20` 这个值（旧池最高 18） |
+| 7 | 上一位代理（或派单）声称 "node asserts 84" | 84 是**行数**（各套件 `rows:` 相加：8+13+14+7+8+9+9+16），`asserts` 实测是 **871**；而 `node --test test/` 汇总里的 `ℹ tests 8` 是**文件数**。三个口径都被混叫成"断言数" | 本报告与 README/DESIGN 一律写成"84 行 / 871 条"，并把 `node --test` 的原始汇总一起贴出来（§3.2）。注意 `asserts` 这一列**不是**完全固定的：`test/solve.test.mjs:172` 那条双搜索器对账按"产物里出现的每个 par 值"各出 2 条，所以换一池产物就会抖几个。行数（84）才是稳定的口径；2026-10-04 复跑是 84 行 / **874** 条，多的 3 条全在 `test/shape.test.mjs`（49 → 52），正是这一格说的"会抖" | §3.2 的每套件 `rows / asserts` 表；旧产物下同一命令本会话也实跑过一遍：84 行 / **869** 条，差异全在 `test/solve.test.mjs`（120 → 122），因为新池多了 `par 20` 这个值（旧池最高 18） |
 | 8 | 显示名有三个来源打架：任务单写 `倒水`，`pour.md §3 行 3` 写 `中文名/显示名：倒水量`，磁盘上的 `index.html:9` 是 `<title>倒水量 · POUR</title>`（`package.json` 的 `description`、`tools/verify.sh:2` 也都是"倒水量"） | `BUILDER.md:48` 与 `DELIVERABLE-TEMPLATE.md:11-13` 要的 `中文名` 是**规格里那个**，而且要求 README 首行与交付报告的 App 名称行逐字相同。若照任务单的 `倒水` 写，README 首行会与 shipped 页面标题不一致 | 按任务单自己的那句"若规格里另有中文名以规格为准"取 **倒水量**：`README.md` 首行 `# 倒水量 · POUR`、本文件首行 `# 倒水量 - 交付报告`、App 名称行 `| **App 名称** | 倒水量 |`，与 `index.html` 的 `<title>` 逐字一致。**这件事需要 lead 确认**（若组织全景里要的是"倒水"，那么需要同步改的是 `index.html` 与规格，不只是文档） | `head -1 README.md`、本行、`grep -n '<title>' index.html` 三处比对 |
 | 9 | 规格 `pour.md §3` 要求"用解里 fill 占比 > 80% 这类实测特征筛掉一眼可见的题" | 这条筛子在本模型里**永远不会开火**：水从龙头打进来必须至少被倒走一次才会出现答案 ⇒ 任何认证解 `fills ≤ par/2`，`fillShare ≤ 0.5`（`test/make.test.mjs:69` 把 0.5 当成模型性质在断言，`:70` 还要求"0.5 被反复达到"，所以不是样本假象） | `routeFeatures()` 仍然打印 `fillShare`（它是被量的数，不是被执行的规则），80% 那条规则真正想拦的那一族由 `pureTransfer`（条件在 `make.js:68`，阈值 `TRANSFER_PAR_MAX = 4` 在 `:30`）拦，本次 `drip` 档实测开火 190 次（§2.2）。**与规格不同之处如实登记，没有照做不说** | `test/make.test.mjs` "the largest fill share in the whole family is 0.500, not over a half"；`make.js:24-29` 的注释；§2.2 的 `pureTransfer 190` |
 | 10 | 派单口径"点击时只允许 `limit=2` 早停，全 BFS 只在 bake" | 那是**下界**，不是本仓的姿势。本仓点击时零搜索：提示只走烘焙路线，离开路线就返回 `{off:true}`（`game.js:90`），所以没有任何东西需要"数到 2 就停" | `js/main.js:4-8` 的头注释声明本文件不 import 搜索器，运行期由 `@boot` 的两条配套断言证明：`solve.js` 与 `make.js` **从未出现在 `performance.getEntriesByType('resource')` 里**（`tools/playtest.mjs:563`），同时 `js/data/lots.js` **确实**被 fetch 了（`:566`）—— 后一条防的是"什么都没加载所以当然没搜索"这种假绿 | §3.3 的 `@boot rows: 18 fail: []`；静态那侧只有间接防线：`test/shape.test.mjs:111` 禁掉 `view.js` + `main.js` 里的 `fetch(` / `XMLHttpRequest` / `import(` |

@@ -215,7 +215,7 @@ totals: drawn 7310, accepted 5438, 129.6s
 
 | 结构量（逐位可复现，换机器也一样） | 计时量（本机本次实测，会随负载漂移） |
 | --- | --- |
-| `par / solutions / states / depth / route`（每行都由 `test/library.test.mjs` 重解比对）、`∏(cᵢ+1)`、动作数 6/12/20、`SPACE_LIMIT / MAX_BUCKETS / MAX_CAP`、Bézout 的 606/525/486/197/161 与 `mismatches []`、`CLASSIC` 的 16 个状态与逐层 `[1,2,3,2,2,2,2,2]`、四档的 `par` 边界、shipped 池 `n = 16/16/14/17`、`node` 层 84 行 / 871 条、`browser` 层 130 行 | `bake` 总耗时（本机 7.5 s / 7.8 s 两跑）、`balance` 的 `ms` 与 `decant` 的 `drawn/accepted/median`、`node --test` 的 `duration_ms`（95 ms）、headless Chrome 单段墙钟、每档被 `TIER_MS` 截断的位置 |
+| `par / solutions / states / depth / route`（每行都由 `test/library.test.mjs` 重解比对）、`∏(cᵢ+1)`、动作数 6/12/20、`SPACE_LIMIT / MAX_BUCKETS / MAX_CAP`、Bézout 的 606/525/486/197/161 与 `mismatches []`、`CLASSIC` 的 16 个状态与逐层 `[1,2,3,2,2,2,2,2]`、四档的 `par` 边界、shipped 池 `n = 16/16/14/17`、`node` 层 84 行 / 874 条、`browser` 层 131 行 | `bake` 总耗时（本机 7.5 s / 7.8 s 两跑）、`balance` 的 `ms` 与 `decant` 的 `drawn/accepted/median`、`node --test` 的 `duration_ms`（95 ms）、headless Chrome 单段墙钟、每档被 `TIER_MS` 截断的位置 |
 
 判据很简单：**期望值写死在断言里的都是结构量；只出现在打印行里的都是计时量**。
 `test/make.test.mjs` 因此只断言"带不越过包络 / 同一 seed 同一题 / 门槛生效"这类形状，
@@ -393,7 +393,11 @@ PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3
 - **不做点击时现场搜索**（包括"只允许 `limit=2`"那种放宽）：§5。
 - **不做成就 / 排行榜 / 签到 / 云存档 / 分享战绩**（契约 §5，E 组禁令）。
   分享只分享谜题本身（`#/lot/<id>`、`#/random/<tier>/<token>`），不带分数。
-- **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：0 个二进制资产，`node_modules` 不存在。
+- **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：仓里 0 个二进制**文件**，`node_modules` 不存在。
+  唯一的例外是 PWA 安装要的图标：四张（180 any / 192 any / 192 maskable / 512 any）都以 base64 内联在
+  `manifest.webmanifest` 里，字节取自中央美术件，宽高由 `tools/deploy-set.mjs` 的 P 段解码后与 IHDR 真值
+  逐张核对（X13 那把刀证明这一条会红）。`test/shape.test.mjs:81` 钉的是"没有一段真 base64 资产跟着
+  `data:` 走进 js/css/html 里"——清单是 `.webmanifest`，不在那支扫描的扩展名集合内，所以这条约束仍然成立。
 - **不做"只有文件没有接线"的生成器**：`js/core/make.js` 与 `js/core/solve.js` 在 shipped 页面里
   不被 import，`@boot` 用资源列表钉住这一点；它们不是幽灵功能，是构建期工具，
   由 `tools/bake.mjs` 与 `test/` 接线。

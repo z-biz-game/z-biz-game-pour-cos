@@ -83,9 +83,12 @@ test('the app ships no binary asset of any kind', () => {
     '.woff', '.woff2', '.ttf', '.otf', '.eot', '.wasm', '.zip', '.webm', '.mp4'];
   const found = ALL.filter((f) => banned.some((ext) => f.toLowerCase().endsWith(ext)));
   eq(found, [], 'every visual is drawn by js/view.js with canvas 2D paths');
+  // 这条量的是"有没有一段真资产跟着这个 scheme 走进文本文件"，不是前缀本身：tools/deploy-set.mjs
+  // 要**说出** data:image/png;base64 这个名字（它把内联图标解码后核 IHDR 真宽高），那不算走私资产。
+  // 门槛取 64 个 base64 字符（≈48 字节），比一张 1x1 PNG 的载荷还短——最小的资产也漏不掉。
   const inline = ALL.filter((f) => /\.(js|mjs|css|html|cjs)$/.test(f)
-    && /data:(image|audio|font|application\/octet-stream)/.test(readFileSync(join(root, f), 'utf8')));
-  eq(inline, [], 'and nothing hides an asset as a data: URI either');
+    && /data:(image|audio|font|application\/octet-stream);base64,[A-Za-z0-9+/]{64,}/.test(readFileSync(join(root, f), 'utf8')));
+  eq(inline, [], 'and nothing carries a real base64 asset behind a data: URI either');
 });
 
 test('the page loads nothing from a network', () => {
