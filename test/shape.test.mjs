@@ -175,6 +175,34 @@ test('the install surface is a real manifest plus a network-first service worker
   ok(/navigator\.serviceWorker\.register/.test(html), '但 http/https 下确实注册');
 });
 
+test('the desktop shell points at a bitmap that exists', () => {
+  // BrowserWindow 不带 icon 时，Windows/Linux 的 taskbar 与开发态 dock 一律退回 Electron
+  // 默认图标；安装包同理。这两条引用过去没有任何测试看过，所以在这里钉住"路径写得出、
+  // 文件在盘上、尺寸够"。
+  const main = readFileSync(join(root, 'electron/main.cjs'), 'utf8');
+  const m = /icon:\s*([A-Za-z_$][\w$]*)/.exec(main);
+  ok(!!m, 'BrowserWindow 的构造参数里必须有 icon');
+  const decl = new RegExp(`const ${m[1]}\\s*=\\s*path\\.join\\(__dirname,[^;]+`);
+  ok(decl.test(main), `${m[1]} 必须由 __dirname 解析，不能是相对工作目录的字符串`);
+  const lit = /path\.join\(__dirname,\s*'\.\.',\s*((?:'[^']+',?\s*)+)\)/.exec(main);
+  ok(lit, '壳图标路径要写成 path.join(__dirname, \'..\', …) 的字面量段');
+  const rel = [...lit[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).join('/');
+  ok(existsSync(join(root, rel)), `壳引用的 ${rel} 必须在盘上`);
+  const info = pngInfo(rel);
+  ok(info.ok && info.w >= 512 && info.h >= 512, `壳图标要是不小于 512 的真 PNG，实测 ${info.w || '?'}x${info.h || '?'}`);
+  ok(/app\.dock\.setIcon/.test(main), 'macOS 的 dock 图标走 app.dock.setIcon，不是窗口 option');
+
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  const missing = [];
+  for (const platform of ['mac', 'win', 'linux']) {
+    const icon = pkg.build[platform] && pkg.build[platform].icon;
+    if (!icon) missing.push(`${platform} 没有 icon 字段`);
+    else if (!existsSync(join(root, icon))) missing.push(`${platform}.icon=${icon} 盘上不存在`);
+    else if (icon !== 'icons/icon-1024.png') missing.push(`${platform}.icon 指向 ${icon}，与仓内那张 1024 不一致`);
+  }
+  eq(missing, [], '三个平台的安装包图标都指向仓内那张 1024 真 PNG');
+});
+
 // ---------- 4. the shell is the only DOM layer ----------
 
 test('the shell owns the DOM and routes through one hook', () => {

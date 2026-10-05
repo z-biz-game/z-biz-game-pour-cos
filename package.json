@@ -33,8 +33,8 @@
   "build": {
     "appId": "com.zbiz.pour",
     "productName": "Pour",
-    "mac": { "category": "public.app-category.puzzle-games" },
-    "win": { "target": "nsis" },
-    "linux": { "target": "AppImage" }
+    "mac": { "category": "public.app-category.puzzle-games", "icon": "icons/icon-1024.png" },
+    "win": { "target": "nsis", "icon": "icons/icon-1024.png" },
+    "linux": { "target": "AppImage", "icon": "icons/icon-1024.png" }
   }
 }
