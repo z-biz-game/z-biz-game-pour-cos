@@ -33,6 +33,9 @@ const el = {
 };
 
 const LEVELS = ALL.length;
+// 存档里的闯关指针不可能超过真实题数：越界记录（手改的、上一个 bake 的）在这里被夹回来，
+// 而不是让 renderShelf 把 63 个按钮全部点亮。必须在第一次读 store 之前说。
+store.setUnlockCap(LEVELS);
 const app = {
   mode: 'campaign',
   index: 1,
@@ -437,8 +440,8 @@ function unlockAudio() {
 window.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
 window.addEventListener('keydown', unlockAudio, { capture: true });
 
-// 减动效是系统开关，玩家随时可改：改了要立刻把画面重画一次，不然静止的水面还留着上一秒的脉动相位。
-prefs.onChange(() => view.redraw());
+// 减动效是系统开关，玩家随时可改。落点不在这里：js/view.js 自己订阅了这路信号，
+// 因为它同时要把在飞的水滴与提示脉动清掉 —— 只重画一次是止不住的。
 
 if (userPrefs.muted) setMuted(true);
 if (!userPrefs.taught) openTutorial();

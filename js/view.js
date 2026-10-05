@@ -619,6 +619,17 @@ export function createView(canvas, { onCommit } = {}) {
     sheet = img;
   });
 
+  // 减动效不是「下次别再生成」就完事：开关拨下的那一刻，在飞的粒子必须一起落地。
+  // drawParticles() 在减动效下直接 return，所以旧粒子既看不见又还在把 `busy` 吊着空转，
+  // 而 animClock 还在给它们计龄 —— 画面静止了，循环却没停。这里补上那一下清除。
+  prefs.onChange((reduced) => {
+    if (reduced) {
+      particles = [];
+      hint = null;
+    }
+    draw();
+  });
+
   return {
     attach(next) {
       game = next;

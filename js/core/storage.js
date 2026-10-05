@@ -71,15 +71,24 @@ let cache = null;
 // loses the damaged part, never the player's afternoon.
 const COUNTER_MAX = 1e9;
 
+// The campaign pointer needs an upper bound as well as a lower one. `blank()` starts at level
+// one and the pool has a fixed length, so `unlocked: 999999` is not a save a player can have
+// earned — it is a hand-edited or future-written file, and left alone it lights up every locked
+// shelf button. The shell knows how many puzzles were baked and calls `setUnlockCap(LEVELS)`
+// once at boot; core stays pool-agnostic (no import of js/data/lots.js) so node tools and the
+// suites can still decode a save with no cap in sight.
+let unlockCap = COUNTER_MAX;
+
 function count(value, fallback) {
   const n = Math.floor(Number(value));
   return Number.isFinite(n) && n >= 0 && n <= COUNTER_MAX ? n : fallback;
 }
 
-// The campaign pointer is a level number, so it is the one counter with a lower bound.
+// The campaign pointer is a level number, so it is the one counter with a lower bound —
+// and with the cap in place, an upper one.
 function levelPointer(value) {
   const n = count(value, 0);
-  return n >= 1 ? n : blank().unlocked;
+  return n >= 1 ? Math.min(n, unlockCap) : blank().unlocked;
 }
 
 // Returns null for "this record is not a record". A missing `best` is fatal: the whole point of
@@ -154,20 +163,38 @@ export const store = {
   get records() { return load().records; },
   get stats() { return load().stats; },
   get daily() { return load().daily; },
-  get unlocked() { return load().unlocked; },
+  // Clamped on the way out as well as on the way in: the decode happens once and caches, so a
+  // cap set after the first read must still be the bound the shell sees (js/main.js reads this
+  // getter on every render to decide which shelf buttons are disabled).
+  get unlocked() { return Math.min(load().unlocked, unlockCap); },
 
   record(id) {
     return load().records[id] || null;
   },
 
   // Unlocking is monotone: the campaign never goes backwards, because re-solving an
-  // earlier puzzle must not be able to hide a later one.
+  // earlier puzzle must not be able to hide a later one. And it never runs past the pool:
+  // solving the last baked puzzle asks for LEVELS + 1, which is not a level that exists.
   unlock(n) {
     const s = load();
-    if (n > s.unlocked) s.unlocked = n;
+    const cur = Math.min(s.unlocked, unlockCap);
+    const want = Math.min(n, unlockCap);
+    // 赋值而不是条件写：越界指针在这里被顺手修回盘上，否则 999999 会一直躺在存档里，
+    // 只靠读的时候夹 —— 下一次 bake 数对了它还是一颗雷。
+    s.unlocked = want > cur ? want : cur;
     persist();
     return s.unlocked;
   },
+
+  // The shell owns the pool length; core only learns it here. Returns the cap in force so a
+  // caller (and test/storage.test.mjs) can check that a nonsense argument was refused rather
+  // than silently removing the bound.
+  setUnlockCap(n) {
+    const k = Math.floor(Number(n));
+    if (k >= 1 && k <= COUNTER_MAX) unlockCap = k;
+    return unlockCap;
+  },
+  get unlockCap() { return unlockCap; },
 
   markDaily(dateKey, id) {
     const s = load();

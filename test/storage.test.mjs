@@ -433,4 +433,28 @@ async function scenario(name, where, fn) {
   });
 }
 
+// ---------- 15. the pointer's upper bound ----------
+
+{
+  const beyond = JSON.stringify({
+    records: { 'lot-01': { solved: true, best: 3, plays: 1, perfect: true } },
+    unlocked: 999999,
+  });
+  const disk = fakeDisk(beyond);
+  await scenario('a pointer past the baked pool is clamped once the shell says how many puzzles exist', envWith(disk), (mod) => {
+    const { store } = mod;
+    eq(store.unlockCap, 1e9, 'core 默认不知道池子有多长：上界是壳告诉它的');
+    eq(store.unlocked, 999999, '没有题数就没有上界 —— bake 工具与上面那些旧行走的就是这条路');
+    eq(store.setUnlockCap(63), 63, 'js/main.js 在 boot 时把 ALL.length 交给 core');
+    eq(store.unlocked, 63, '越界指针立刻被夹回最后一题，不用等下一次解码');
+    eq(store.unlock(64), 63, '打完第 63 题要求开的第 64 题并不存在');
+    eq(JSON.parse(disk.lastWrite).unlocked, 63, '写回盘上的也是夹过的数，不是只在读的时候好看');
+    eq(store.unlock(5), 63, '夹过之后单调性照旧：回打一题不许把进度抹小');
+    eq(store.setUnlockCap('nope'), 63, '非数的题数被拒绝 —— 上界不许被一句 NaN 悄悄拆掉');
+    eq(store.setUnlockCap(0), 63, '零题的池子不存在，也不许把上界拆成 0');
+    eq(store.record('lot-01').best, 3, '夹指针不许牵连那条健康的记录');
+    eq(Object.keys(store.records), ['lot-01'], '一个越界字段只动它自己');
+  });
+}
+
 run();
