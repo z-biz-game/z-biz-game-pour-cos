@@ -310,6 +310,52 @@ if (ogTag) {
   }
 }
 
+// X14–X16 打的是 H 段（head 的语法形状）。三把都按**位置**切而不按字面量找针：head 里第一条是
+// 什么标签随仓漂（pour 是 charset），而坏法是形状——少一个 > / 多一个 > / 少一条标签。
+// 这三类正是 fa58586 那份 appender 在本仓留下的样子，CI 当时全绿：R 段读字符串、不读结构。
+if (!knife('X14 head 第一个标签漏了收尾的 >', ['H3'], (dir) => {
+  const t = read(dir, 'index.html');
+  const h = t.indexOf('<head>');
+  const lt = t.indexOf('<', h + 6), gt = t.indexOf('>', lt), next = t.indexOf('<', lt + 1);
+  // 靶子必须本来就好：下一个 < 落在这一条的 > 之后，删掉那个 > 才会造成吞并（否则刀打的是已有缺陷）
+  if (h < 0 || lt < 0 || gt < 0 || next < gt) throw new Error('head 起手式不是一串闭合的标签，这一刀的靶子不明确');
+  write(dir, 'index.html', t.slice(0, gt) + t.slice(gt + 1));
+}, () => '下一条被吃成 attribute')) bad += 1;
+
+if (!knife('X15 head 中间多出一个裸的 >', ['H2'], (dir) => {
+  const t = read(dir, 'index.html');
+  const h = t.indexOf('<head>'), e = t.indexOf('</head>'), li = t.indexOf('<link', h);
+  if (h < 0 || e < 0 || li < 0 || li > e) throw new Error('head 里没有 <link>，这一刀的靶子不明确');
+  write(dir, 'index.html', t.slice(0, li) + '>' + t.slice(li));
+}, () => 'head 就地结束，它后面的 link 不再属于 head')) bad += 1;
+
+if (!knife('X16 head 少一条标签', ['H4'], (dir) => {
+  const t = read(dir, 'index.html');
+  const h = t.indexOf('<head>');
+  const lt = t.indexOf('<', h + 6), gt = t.indexOf('>', lt);
+  if (h < 0 || lt < 0 || gt < 0) throw new Error('head 里没有可删的标签');
+  write(dir, 'index.html', t.slice(0, lt) + t.slice(gt + 1));
+}, () => 'H2/H3 的扫描范围由这条钉住')) bad += 1;
+
+// X17 阴性对照：head 里的注释有 > 也有 <meta 字样，按 H2「标签之间只剩空白」的口径它**不能**红。
+// 这一条不发力就等于 H 段会把正常的说明注释判成缺陷——那样的闸会在下一个人的散文上红，
+// 而红了一个不属于他的断言，比不红更坏。
+{
+  const dir = fresh();
+  const t = read(dir, 'index.html');
+  const e = t.indexOf('</head>');
+  if (e < 0) throw new Error('没有 </head>，阴性对照没地方插');
+  write(dir, 'index.html', t.slice(0, e) + '<!-- 台账注释：<meta name="x"> 与 > 都只活在注释里 -->\n' + t.slice(e));
+  const res = gate(dir);
+  if (res.rc !== 0 || res.rows !== baseRun.rows) {
+    line(`X17 head 注释里的 > 与 <meta INERT-CLAIM · rc=${res.rc} rows=${res.rows}（应 ${baseRun.rows}）`);
+    for (const l of res.fails.slice(0, 4)) line('      ' + l.trim());
+    bad += 1;
+  } else {
+    line(`X17 head 注释里的 > 与 <meta OK · 注释没被算成裸文本，rows 仍 ${baseRun.rows}`);
+  }
+}
+
 for (const w of COPIES) fs.rmSync(w, { recursive: true, force: true });
 line(`DS_SELFTEST rc=${bad}（0=每一刀都按预期发力、阴性对照按预期不发力）`);
 line(`DS_SELFTEST_BASELINE ${baseRun.tally} rows=${baseRun.rows}`);

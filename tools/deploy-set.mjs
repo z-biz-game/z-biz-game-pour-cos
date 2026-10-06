@@ -6,7 +6,7 @@
 // （加了 manifest/图标/SW 却忘了加进 cp），线上就是 404，而引擎测试、浏览器闸全都跑的是
 // 仓库根，一条都不会红。这个闸跑的是**产物**。
 //
-// 四类断言，各管一种真实的坏法：
+// 五类断言，各管一种真实的坏法：
 //   W 清单与页面同源：assemble 脚本存在且被 workflow 引用；闸本身被 CI 引用
 //     （否则 CI 拷的是另一份清单，本闸验的就不是上线那一份）
 //   R 引用可达：从 index.html 出发，沿着**页面自己声明的取径**走一遍——href/src、它 link
@@ -16,8 +16,12 @@
 //   R 不许绝对路径：'/sw.js' 在 Pages 的 /<repo>/ 前缀下会跳出项目站点
 //   P 位图不许说谎：manifest 声明的 sizes 必须等于 PNG IHDR 的真实宽高——文件图标读文件的
 //     IHDR，内联 data:image/png;base64 的图标解码后读同一段，两种都不许只信声明
+//   H head 的语法形状：R 段拿 index.html 里的字符串当引用，标签没闭合它照样读得动，于是这一类坏法
+//     在 R 段全绿——而线上是要命的：少一个收尾的 > 会把下一条 meta 吃成 attribute（重复的 content
+//     按规范丢弃），多一个 > 让 head 就地结束、<link rel="icon"> 不再由 head 认领（Chrome 转去要
+//     /favicon.ico 并 404，只有浏览器闸看得见——同批的 nikoli-loops 就是被这一条判红的）
 //
-// 防自己空转：条数钉在 EXPECT_CHECKS / EXPECT_ROWS，解析不到引用（而不是引用都齐）也是红。
+// 防自己空转：条数钉在 EXPECT_CHECKS / EXPECT_ROWS / EXPECT_HEAD_TAGS，解析不到引用（而不是引用都齐）也是红。
 // 这两条会不会真的红由 tools/deploy-set-selftest.mjs 当场证明（那支脚本把仓库复制到临时目录、
 // 照着上面每一类各下一刀，并要求闸点名吃掉那一刀），所以钉数字不必靠人的记性。
 import fs from 'node:fs';
@@ -32,10 +36,13 @@ const ASSEMBLE = 'tools/assemble-site.sh';
 // R 段实际检查的路径条数。改页面/清单会改变它——那正是要它变的时候；没改页面却掉了，
 // 说明引用解析不出来的那部分被悄悄放过了。对着 DEPLOY_SET_DUMP=1 的出处表能逐条核。
 const EXPECT_CHECKS = 19;
-// 全绿时这个闸实际跑的断言条数（W/R/P 三段之和）。钉住它，「少一条断言」就不可能是绿的：
+// 全绿时这个闸实际跑的断言条数（W/R/P/H 四段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 39;
+const EXPECT_ROWS = 43;
+// H 段扫到的 head 标签条数。H2/H3 只在"扫到了标签"的范围内成立，条数掉了就是解析断在半路
+// （断在半路的语法检查比没有检查更坏：它读起来是绿的）。对着头一遍的出处表逐条数。
+const EXPECT_HEAD_TAGS = 14;
 
 let rows = 0;
 const fails = [];
@@ -109,6 +116,52 @@ const PAGES = ((readIf(path.join(ROOT, 'README.md')) || '')
 // 解析出来是个 .js/.css 就把它也当作一站，模块图于是自己把整条链交出来。手打名单漏扫的时候
 // 本闸照样绿，而「名单漏扫」与「清单漏拷」是同一件事的两侧。
 const html = readIf(path.join(ROOT, 'index.html')) || '';
+
+// ---- C：head 的语法形状（只查标签自己闭没闭合，不查内容）----
+// 这一段是本仓真实挨过的一刀换来的：description 那条的收尾 > 漏了、行尾多出一个 >。R 段对它全绿
+// ——引用照样解析、文件照样存在，因为它读的是字符串而不是标签结构。坏法的后果不在仓里：被吃进去的
+// og:type 成了 description 的一个 attribute（重复的 content 按规范丢弃），而 head 里一个非空白的 >
+// 让解析器就地弹出 head，后面的 <link rel="icon"> 不再由 head 认领，Chrome 转去要 /favicon.ico
+// 并 404。同批被同一份 appender 改过的 nikoli-loops 由它的浏览器闸判红（run 37450764985 唯一红行
+// 「全程零控制台错误」），这一仓与 staircase 坏得一模一样而 CI 全绿——补的就是这个盲区。
+// 逐标签走一遍而不是用一个正则吞整段：坏法恰好是「> 少了一个」，一步到位的正则会把两种坏法读成同一种。
+const HM = /<head>([\s\S]*?)<\/head>/i.exec(html);
+ok(HM !== null, 'H1 index.html 里读得到成对的 <head>…</head>', '读不到时 H2/H3 一条都没跑');
+let headTags = 0;
+if (HM) {
+  const hb = HM[1];
+  const bare = [];   // head 之内、标签之外的非空白文本：解析器读到它就结束 head
+  const eaten = [];  // 一个标签体内又出现 < ：上一个标签少了收尾的 >，下一条被吃了进来
+  for (let p = 0; p < hb.length;) {
+    const lt = hb.indexOf('<', p);
+    const gap = hb.slice(p, lt < 0 ? hb.length : lt);
+    if (gap.trim() !== '') bare.push(gap.trim().replace(/\s+/g, ' ').slice(0, 28));
+    if (lt < 0) break;
+    if (hb.startsWith('!--', lt + 1)) { const ce = hb.indexOf('-->', lt); p = ce < 0 ? hb.length : ce + 3; continue; }
+    const gt = hb.indexOf('>', lt);
+    if (gt < 0) { bare.push('未闭合的标签尾巴'); break; }
+    const body = hb.slice(lt, gt);
+    // slice(1)：body 自己以 < 开头，那是这个标签的起手式而不是吞并的证据
+    if (body.slice(1).includes('<')) eaten.push(body.replace(/\s+/g, ' ').slice(0, 44));
+    headTags += 1;
+    // 成对元素（title/script/style）的正文是合法文本，按配对标签跳到收尾，不能算成裸文本
+    const nm = /^<([a-zA-Z][\w-]*)/.exec(body);
+    if (nm && /^(title|script|style)$/i.test(nm[1])) {
+      const close = new RegExp('</' + nm[1] + '\\s*>', 'i').exec(hb.slice(gt));
+      if (!close) { bare.push('<' + nm[1] + '> 没有配对收尾'); break; }
+      p = gt + close.index + close[0].length;
+      continue;
+    }
+    p = gt + 1;
+  }
+  ok(bare.length === 0, 'H2 head 里标签之间只剩空白（多出的一个 > 就让 head 就地结束）',
+    '非空白片段 ' + JSON.stringify(bare));
+  ok(eaten.length === 0, 'H3 每个标签在自己的 > 之前不碰下一个 <（少一个收尾 > 会把下一条 meta 吃成 attribute）',
+    '吞并下一条的标签体 ' + JSON.stringify(eaten));
+  ok(headTags === EXPECT_HEAD_TAGS,
+    `H4 head 里解析到的标签条数等于钉在文件里的 EXPECT_HEAD_TAGS（${EXPECT_HEAD_TAGS}）`,
+    '实际 ' + headTags + ' 条：H2/H3 的扫描范围由这条钉住，掉了就是语法检查断在半路');
+}
 const refs = []; // [出处, 声明串, 这串依附的目录（相对仓根；'' = 文档根，也就是 index.html 所在处）]
 const push = (from, spec, at) => {
   const s = String(spec).trim();
