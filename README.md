@@ -18,7 +18,8 @@
 - 零依赖、零美术、零打包器：只有 `index.html` + `css/` + `js/`，桶、水面、龙头、下水道全部由
   `js/view.js` 用 canvas 2D 路径画出来，仓里 0 个二进制**文件**（PWA 安装要的那张 512 图标不例外：
   它是 base64 内联在 `manifest.webmanifest` 里的，宽高由上线清单闸的 P 段解码后核对真图）。
-- 63 关已烘焙并逐行复验，四档带的区间是从实测 `par` 直方图里定的：默认台架 1 280 次抽样 / 926 道题，
+- 63 关已烘焙并逐行复验，四档带的区间是从实测 `par` 直方图里定的：默认台架 1 360 次抽样 / 1 006 道题
+  （本次复现值；`decant` 被 `TIER_MS` 截断的那一跑是 1 280 次抽样 / 926 道题，两个都是**抽样数**口径），
   按规格 `pour.md §3` 的"5000 题"口径放大到 7 310 次抽样 / 5 438 道题再量一遍，三档低难度的
   `median / maxStates` 一个字没变（`node test/balance.mjs`，两次输出都在 DESIGN.md §4.2）。
 - 战役 / 每日 / 随机 / 分享链接四种入口，同一个 id 或同一个 token 在任何设备上都是同一道题。
@@ -30,7 +31,7 @@
 node server.cjs            # http://127.0.0.1:5180/（ES module 需要一个 origin，file:// 会被 CORS 挡掉）
 npm run unit               # 八个 node 套件：84 行断言、874 条 eq/ok
 bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标拖动验收（131 行断言）
-node test/balance.mjs      # 生成器实测：接受率、逐档拒绝原因、最大状态数
+node test/balance.mjs      # 生成器实测：接受率、逐档拒绝原因、最大状态数（本机实测 20.5 秒；已接进 ci.yml 的 unit job 与 tools/verify.sh，本地与 CI 同一条命令）
 node tools/bake.mjs        # 重新出题 + 复验，重写 js/data/lots.js（本机 7.5–7.8 秒）
 npx electron .             # 桌面壳（需自行 npm i -D electron，本仓不装）
 ```
@@ -69,20 +70,28 @@ decant    17  12-20 med=15.6 12x3 13x2 14x3 16x3 18x3 20x3  sum=4632 avg=272.5 4
 `accept` 这一列是**按 par 名额凑题**的接受率（`bake.mjs` 给每个 par 值轮询取样，再用
 `signature()` 把"同一组容量 + 同一目标 + 同一个 need"的重复题丢掉），所以名额越大越难凑
 ——`blend` 那档凑到 14 道就停了（`warn: blend only reached 14 puzzles across pars 8,9,10,11`）。`node test/balance.mjs` 量的是另一件
-事——"随便抽一道题要抽多少次才中"，下面是本机原样输出（23.3 秒）：
+事——"随便抽一道题要抽多少次才中"，下面是本机原样输出（实测 20.5 秒，脚本自报 20.3s）：
 
 ```
 tier      band    drawn  accepted  rate     median  maxStates  gate  ms     cut  rejections
-drip      4-5     160    160      100.00%  4.5     616        0     42     no   bandLow 988, bandHigh 744, gcdReject 588, needIsACapacity 372, pureTransfer 190
-measure   6-7     160    160      100.00%  6.5     8736       0     183    no   bandLow 4013, needIsACapacity 1040, gcdReject 1003, bandHigh 743
-blend     8-11    320    270      84.38%   9.2     1144       0     3031   no   bandLow 115576, needIsACapacity 25302, gcdReject 24943, bandHigh 7997, gaveUp 50
-decant    12-20   640    336      52.50%   14.9    168        0     20001  yes  bandLow 595529, needIsACapacity 91510, gcdReject 89379, bandHigh 18521, spaceOverLimit 9871, gaveUp 304, truncated 21, timeout 1
-totals: drawn 1280, accepted 926, 23.3s
+drip      4-5     160    160      100.00%  4.5     616        0     41     no   bandLow 988, bandHigh 744, gcdReject 588, needIsACapacity 372, pureTransfer 190
+measure   6-7     160    160      100.00%  6.5     8736       0     167    no   bandLow 4013, needIsACapacity 1040, gcdReject 1003, bandHigh 743
+blend     8-11    320    270      84.38%   9.2     1144       0     2868   no   bandLow 115576, needIsACapacity 25302, gcdReject 24943, bandHigh 7997, gaveUp 50
+decant    12-20   720    416      57.78%   15.9    168        0     17224  no   bandLow 609265, needIsACapacity 93580, gcdReject 91363, bandHigh 18579, spaceOverLimit 10090, gaveUp 304
+
+par histogram per band (draw order): 4:80 5:80 6:80 7:80 8:80 9:79 10:80 11:31 12:80 13:16 14:80 15:0 16:80 17:0 18:80 19:0 20:80
+totals: drawn 1360, accepted 1006, 20.3s
+gate: a candidate enters only if ∏(capacity+1) <= 20000 (js/core/jug.js SPACE_LIMIT).
 ```
 
-`decant` 那行的 `cut = yes`：该档被 20 秒预算（`TIER_MS`）在 par 20 处截断，所以它的 `drawn /
-accepted / median` 随机器负载漂移（同一次会话里另一跑是 682→378、55.43%、中位 15.5）。
-前三档两次逐位相同。结构量与计时量的分别见 DESIGN.md §4。
+`decant` 这一跑是 `cut = no`：九个 par 值在 17 224 ms 内抽完，没有撞到 20 秒预算
+（`TIER_MS=20000`），所以 `drawn 720 / accepted 416 / median 15.9`。这里替换掉的是负载更高的
+一跑：那一跑在 par 20 之前被截断（`cut = yes`，`drawn 640 / accepted 336 / median 14.9`），
+totals 于是写成 1 280 / 926。**两个数都是抽样次数（drawn），不是题数**；被接受的题数是
+1 006 与 926，而它们又都不等于出厂的 63 关——`drawn` 是样本分母，`accepted` 是结果分母，
+63 是烘焙进 `js/data/lots.js` 的出厂分母，三个数不能互换。前三档的结构列
+（drawn / accepted / rate / median / maxStates）两跑逐位相同，只有 `ms` 在漂。
+结构量与计时量的分别见 DESIGN.md §4。
 
 已发布的 63 关本身（`js/data/lots.js`，md5 `b56070022ac55f9d66a1fde3adcb018e`）：
 `par` 区间 4–20，可达状态最大 4 710（`measure-12`，桶 `[4,8,11,12]`），最短路线条数最大 3 090
