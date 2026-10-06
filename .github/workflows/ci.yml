@@ -31,7 +31,7 @@ jobs:
       # asserts the two cover the same files, and a file that only CI checks is a file nobody
       # checks locally.
       - name: Syntax
-        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+        run: npm run check
       - name: Suites
         run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
       # The difficulty leg. `npm run balance` is the rig that prints the accept rates and the
