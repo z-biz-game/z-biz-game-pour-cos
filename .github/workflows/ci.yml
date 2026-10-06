@@ -33,7 +33,7 @@ jobs:
       - name: Syntax
         run: npm run check
       - name: Suites
-        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+        run: npm run unit
       # The difficulty leg. `npm run balance` is the rig that prints the accept rates and the
       # rejection ledger README quotes, and nothing at merge time ever ran it -- the numbers were
       # guarded by a human remembering the command. Measured here: rc=0 in 20.5s (script self-reports
