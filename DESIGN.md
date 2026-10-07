@@ -24,18 +24,18 @@
 
 ### 1.1 谁算了那个不定方程判据
 
-`js/core/theorem.js` 全文 64 行，文件头把口径的边界写死了（`:5-19`）：
+`js/core/theorem.js` 全文 64 行，文件头把口径的边界写死了（`js/core/theorem.js:5-19`）：
 
 - **必要性对任意桶数成立**：任何时刻每只桶里的水量都是 `g = gcd(caps)` 的倍数（0 和 `cᵢ` 是，
   `pour` 移动的 `m = min(vᵢ, cⱼ − vⱼ)` 在两端都是 `g` 的倍数时也是）。所以 `g ∤ need` ⇒ 量不出。
-- **充分性只对两只桶声明**（`:10-13`）：反复"灌满一只、往另一只倒、另一只满了就倒掉"就是把
+- **充分性只对两只桶声明**（`js/core/theorem.js:10-13`）：反复"灌满一只、往另一只倒、另一只满了就倒掉"就是把
   余数类 `mod g` 在圆上走一圈，所以 `g` 的每个倍数、直到 `max(caps)` 都能出现。
   这句话在本仓**不是靠注释成立的**，是靠 `test/bezout.test.mjs` 在 `a,b ∈ 1..9` 上穷举成立的。
 - 三只、四只桶只享受**必要**条件：`js/core/make.js:122` 只用 `spec.need % gcdAll(spec.caps) !== 0`
   把"一定无解"的抽样丢掉，方向是安全的（必要条件只能否决，不能放行）；
-  真正的判定权在 BFS。谁如果把 `canMeasureAny`（`theorem.js:38`）当成 k ≥ 3 的**充分**判据来收题，
+  真正的判定权在 BFS。谁如果把 `canMeasureAny`（`js/core/theorem.js:41`）当成 k ≥ 3 的**充分**判据来收题，
   就会把"gcd 整除但状态图里其实到不了"的三桶题当成有解——这条没有测试能替它红，因为
-  `theorem.js` 本身没撒谎，是调用姿势错了。所以 `theorem.js:15-19` 那段"充分性只对两桶声明"的
+  `theorem.js` 本身没撒谎，是调用姿势错了。所以 `js/core/theorem.js:15-19` 那段"充分性只对两桶声明"的
   注释与 §1.1 下面那张三路对账表要一起读；本轮还把那三行注释里一处**不存在的字段名**改成了
   实际行为（见 deliverable.md 改动表第 6 行）。
 
@@ -57,7 +57,7 @@
 
 `test/fixture.mjs` 里的 `CLASSIC` 是**手抄**的经典答案（6 步、唯一最短走法、路线逐动作写死），
 期望值不从被测代码读。`test/solve.test.mjs:103` 直接比 `par`。真正防"搜索自己给自己打分"的是
-`:112` 那条反证，它用另一个实现（`brute`，深度上限穷举）证明：
+`test/solve.test.mjs:112` 那条反证，它用另一个实现（`brute`，深度上限穷举）证明：
 
 - 5 步之内 `brute` 返回 `null`，6 步恰好返回 1 条；
 - 前 5 层里 5 号桶出现过的水量集合是 `[0, 2, 3, 5]` —— 4 不在里面，这才是"要第 6 步"的理由；
@@ -77,7 +77,7 @@
 ### 2.1 `∏(cᵢ+1) ≤ 20000` 是门槛，不是建议
 
 `js/core/jug.js:19-21` 写死三个常数：`SPACE_LIMIT = 20000`、`MAX_BUCKETS = 4`、`MAX_CAP = 60`。
-`validate()`（`:175-203`）把它们变成逐条可指认的错误字符串，`test/jug.test.mjs:57` 一条一条打负例：
+`validate()`（`js/core/jug.js:174-203`）把它们变成逐条可指认的错误字符串，`test/jug.test.mjs:57` 一条一条打负例：
 `'two buckets of the same capacity'`、`'need larger than the target bucket can hold'`、
 `'start amount 5 outside bucket 1'`、`'state space 29760 over the 20000 ceiling'`。
 
@@ -94,7 +94,7 @@
 ### 2.2 没有半倒
 
 `js/core/jug.js:9-14`。三个原子动作 `fill / dump / pour` 是唯一可能的动作词表
-（`actionSet()`，`:86`：每桶 2 个 + `k(k−1)` 个倒，2/3/4 只桶恰好 6/12/20 个动作，
+`actionSet()`（`js/core/jug.js:86`）：每桶 2 个 + `k(k−1)` 个倒，2/3/4 只桶恰好 6/12/20 个动作，
 `test/jug.test.mjs:15` 钉住了 6 这个数）。**"倒一半"被禁的理由不是麻烦，是它会毁掉本仓的全部主张**：
 桶上没有刻度，"一半"不是一个玩家能认出的状态；一旦允许，状态就不是 `∏(cᵢ+1)` 里的整点，
 而是连续统，于是 §2.1 的门槛、`par`、`solutions`、"序列化后重解"一起失去意义。
@@ -102,8 +102,8 @@
 
 ### 2.3 零变化动作不入队，也不计步
 
-同一个判断只写一次：`jug.effective()`（`jug.js:117` 起）问"这一步会改变什么吗"，
-`game.legal()`（`game.js:44`）就是 `!game.done && effective(...)`。
+同一个判断只写一次：`effective()`（`js/core/jug.js:121` 起）问"这一步会改变什么吗"，
+`legal()`（`js/core/game.js:44`）就是 `!game.done && effective(...)`。
 于是搜索的入队规则和玩家的计数器不可能各说一套 —— 这是"屏幕上那个步数"与"证明值"能对上前提。
 
 `test/solve.test.mjs:227` 说明为什么这是 BFS 在这里能停下来的原因之一：单桶情形下
@@ -111,7 +111,7 @@
 （诚实补充：`solve` 有 `visited` 表，自环状态会因为已访问而被跳过，所以真正会坏掉的不是终止性，
 而是"每一步都被复制出一份同深度的后继"—— 结论同样是这条判断必须存在。）
 
-面板侧的可观察后果：`game.act()` 返回 `{moved:false, reason:'no change'}`（`game.js:50-53`），
+面板侧的可观察后果：`game.act()` 返回 `{moved:false, reason:'no change'}`（`js/core/game.js:50-53`），
 `main.js` 的 `commit()` 是唯一入口，所以"零变化不计步"只需要在一处成立。
 浏览器层的 `@pointer` 有 5 条真鼠标断言钉它（原地按、倒进满桶、空桶对龙头、抽干空桶、拖回原桶）。
 
@@ -125,16 +125,16 @@
 - `par`：目标所在层的深度。**多目标**（`target` 是数组）时是"到任意满足态"的最短距离，
   判定函数是 `jug.isGoal()`；`test/solve.test.mjs:204` 用两个单目标 par 手推出多目标应当取的值。
 - `solutions`：**同层最短路线条数**。所以搜索**不能**在看见第一个目标时返回
-  （`solve.js:9-12` 的注释），它要把目标那一层走完，再对整层求和 `ways`（`:82-85`）。
+  （`js/core/solve.js:9-12` 的注释），它要把目标那一层走完，再对整层求和 `ways`（`:82-85`）。
   这是面板上"最优走法 M 条"的出处，也是本仓第二个可印数字。shipped 最大 3 090（`decant-04`）。
-- `explored`：搜索访问过的状态数；`census()`（`:97`）另走一遍完整可达图，产出 `states` 与 `depth`。
+- `explored`：搜索访问过的状态数；`census()`（`js/core/solve.js:97`）另走一遍完整可达图，产出 `states` 与 `depth`。
   两个数字故意分开：一个 6 步、全图只有 16 个状态的题是一道算术练习，同样 6 步、穿过 2 000 个
   状态的题才是谜题。面板印后者。
 
 ### 3.1 两个刹车都必须"承认自己没跑完"
 
 `solve(spec, { limit = 400000, deadline })`：结点预算超了置 `truncated`，
-时钟到点也置 `truncated`，两种情况都返回 `par: -1`、`path: []`（`solve.js:79`）。
+时钟到点也置 `truncated`，两种情况都返回 `par: -1`、`path: []`（`js/core/solve.js:79`）。
 这条语义是主张的一部分：**没跑完的搜索不许印难度数字**。
 `test/solve.test.mjs:264` 用一个已知形状的图钉两端：16 状态的 `CLASSIC` 给 8 个结点预算 ⇒
 `truncated` 且 `par === -1`；同一道题给 14 ⇒ 恰好答出 6，而且 `explored` 正好 14
@@ -142,7 +142,7 @@
 
 ### 3.2 时钟轮询为什么在循环顶部（一个真实踩过的坑）
 
-`solve.js:52-54` 的注释记录着：`deadline` 的轮询原来放在"跳过已访问层"的 `continue` **之后**，
+`js/core/solve.js:52-54` 的注释记录着：`deadline` 的轮询原来放在"跳过已访问层"的 `continue` **之后**，
 于是**已经找到目标、正在走完目标层尾巴**的那次搜索永远不看钟，调用方给的 deadline 被静默忽略；
 `tools/bake.mjs` 的每档预算形同虚设。现在轮询在循环体第一句，`gi & 255` 每 256 个结点一次
 （每结点调用 `Date.now()` 会把 BFS 拖慢一个量级）。
@@ -176,8 +176,8 @@ decant    12-20   640    336      52.50%   14.9    168        0     20001  yes  
 totals: drawn 1280, accepted 926, 23.3s
 ```
 
-每个拒绝码都指到一行代码：`bandLow` / `bandHigh` 是 `make.js:126-127` 的带过滤，
-`gcdReject` 是 `:122` 的定理筛，`needIsACapacity` 是 `draw()` 里的廉价结构筛（`make.js:90`，
+每个拒绝码都指到一行代码：`bandLow` / `bandHigh` 是 `js/core/make.js:126-127` 的带过滤，
+`gcdReject` 是 `:122` 的定理筛，`needIsACapacity` 是 `draw()` 里的廉价结构筛（`js/core/make.js:90`，
 `need` 恰好等于某只桶的容量 ⇒ "灌满它再倒掉"，不必搜索就平凡），
 `pureTransfer` 见 §4.4，`spaceOverLimit` 是 §2.1 的门槛，`gaveUp` / `timeout` / `truncated`
 是两次刹车。
@@ -215,7 +215,7 @@ totals: drawn 7310, accepted 5438, 129.6s
 
 | 结构量（逐位可复现，换机器也一样） | 计时量（本机本次实测，会随负载漂移） |
 | --- | --- |
-| `par / solutions / states / depth / route`（每行都由 `test/library.test.mjs` 重解比对）、`∏(cᵢ+1)`、动作数 6/12/20、`SPACE_LIMIT / MAX_BUCKETS / MAX_CAP`、Bézout 的 606/525/486/197/161 与 `mismatches []`、`CLASSIC` 的 16 个状态与逐层 `[1,2,3,2,2,2,2,2]`、四档的 `par` 边界、shipped 池 `n = 16/16/14/17`、`node` 层 84 行 / 874 条、`browser` 层 131 行 | `bake` 总耗时（本机 7.5 s / 7.8 s 两跑）、`balance` 的 `ms` 与 `decant` 的 `drawn/accepted/median`、`node --test` 的 `duration_ms`（95 ms）、headless Chrome 单段墙钟、每档被 `TIER_MS` 截断的位置 |
+| `par / solutions / states / depth / route`（每行都由 `test/library.test.mjs` 重解比对）、`∏(cᵢ+1)`、动作数 6/12/20、`SPACE_LIMIT / MAX_BUCKETS / MAX_CAP`、Bézout 的 606/525/486/197/161 与 `mismatches []`、`CLASSIC` 的 16 个状态与逐层 `[1,2,3,2,2,2,2,2]`、四档的 `par` 边界、shipped 池 `n = 16/16/14/17`、`node` 层 84 行 / 875 条、`browser` 层 131 行 | `bake` 总耗时（本机 7.5 s / 7.8 s 两跑）、`balance` 的 `ms` 与 `decant` 的 `drawn/accepted/median`、`node --test` 的 `duration_ms`（95 ms）、headless Chrome 单段墙钟、每档被 `TIER_MS` 截断的位置 |
 
 判据很简单：**期望值写死在断言里的都是结构量；只出现在打印行里的都是计时量**。
 `test/make.test.mjs` 因此只断言"带不越过包络 / 同一 seed 同一题 / 门槛生效"这类形状，
@@ -227,16 +227,16 @@ totals: drawn 7310, accepted 5438, 129.6s
 它筛不掉任何东西，而且原因可以说清：水从龙头打进来之后，必须至少被倒走一次（倒进别的桶或倒掉）
 才会出现答案，所以任何认证解里 `fills ≤ par/2`，即 `fillShare ≤ 0.5`。
 `test/make.test.mjs` 把这条当成**模型性质**在断言（实测上界恰好 0.50）。
-于是 `routeFeatures()`（`make.js:32`）仍然打印 `fillShare`（它是一个被量的数，不是一条被执行的规则），
+于是 `routeFeatures()`（`js/core/make.js:32`）仍然打印 `fillShare`（它是一个被量的数，不是一条被执行的规则），
 而 80% 那条规则真正想拦的那一族题改由 `pureTransfer` 拦：`dumps === 0` 且 `par ≤ 4`
-（`TRANSFER_PAR_MAX`，`make.js:30`）⇒ 一路纯倒来倒去、一滴不浪费，那是算术读数不是测量题。
+（`TRANSFER_PAR_MAX`，`js/core/make.js:30`）⇒ 一路纯倒来倒去、一滴不浪费，那是算术读数不是测量题。
 它在本次 `drip` 档抽样里真的开火 190 次（上表）。**与规格不同之处在这里，本仓没有照抄那个阈值。**
 
 ### 4.5 为什么接受率随"名额"塌下去
 
 `node tools/bake.mjs` 的 `accept` 列（README 贴了整张表）从 `drip` 的 4.94% 掉到 `decant` 的 0.01%。
 不是抽不到题，是**同一个 par 值下能抽到的不同桶集合太少**：`bake` 按 par 轮询取名额
-（`perWanted`，`bake.mjs:66`），并用 `signature(spec)`（`:42`）把
+（`perWanted`，`tools/bake.mjs:66`），并用 `signature(spec)`（`:42`）把
 "同一组容量 + 同一目标 + 同一个 need"的重复题丢掉，所以名额越大、去重砍得越狠。
 `blend` 档因此只凑到 14 道（`warn: blend only reached 14 puzzles across pars 8,9,10,11`），
 `decant` 凑到 17 道且只覆盖 9 个 par 值里的 6 个（`note: decant drew no puzzle for par 15,17,19`）。
@@ -249,17 +249,17 @@ totals: drawn 7310, accepted 5438, 129.6s
 `BUILDER.md` 允许下界的口径是"点击时只允许 `limit=2` 早停，全枚举只在 bake/proof"。
 本仓比这条更严：**玩家点击时一次搜索都不跑**，连 `limit=2` 都不需要，因为没有任何东西要数——
 
-- 合法性与计数：`game.js:44/:50`，两个数组比较加一次 `apply`。
-- 提示：`game.js:90` 的 `hint()` 只读烘焙好的 `route`，玩家一旦离开认证路线它返回 `{off:true}`，
+- 合法性与计数：`js/core/game.js:44/:50`，两个数组比较加一次 `apply`。
+- 提示：`js/core/game.js:90` 的 `hint()` 只读烘焙好的 `route`，玩家一旦离开认证路线它返回 `{off:true}`，
   **不**现场重搜（`:86-89` 的注释就为这件事写着）。要"离开路线后还给建议"就得在点击时搜索，
   那正是契约要挡的：搜索的上界一旦挂上玩家行为，`par` 就从事实降级成意见，而且浏览器会卡。
-- 每日题与随机题：从 `js/data/lots.js` 那 63 行里查（`library.js:31 pick`），生成器 `make.js`
+- 每日题与随机题：从 `js/data/lots.js` 那 63 行里查（`js/core/library.js:31 pick`），生成器 `make.js`
   在 shipped 图里**根本不被 import**。
 - 这条边界不是文档承诺，是断言：`@boot` 里有一条
   `the browser does not search: the solver and the generator were never fetched`
   （`tools/playtest.mjs:563`），它读 `performance.getEntriesByType('resource')`，
   只要 `solve.js` 或 `make.js` 出现在模块请求列表里就红；紧挨着的一条正向断言
-  `js/data/lots.js` 确实被 fetch 了（`:566`），防止"什么都没加载所以当然没搜索"这种假绿。
+  `js/data/lots.js` 确实被 fetch 了（`tools/playtest.mjs:566`），防止"什么都没加载所以当然没搜索"这种假绿。
 
 `pour.md §1` 那句"这样 BFS 在浏览器里也是毫秒级，但**仍然**只在构建期算 par 与路线"就是本节的依据。
 
@@ -288,22 +288,22 @@ totals: drawn 7310, accepted 5438, 129.6s
 
 ## 6. 手势：状态机之外的那点几何
 
-`js/view.js` 的 `measure()`（顶部注释 `:15-22` 有常量）把画布切成三条带：龙头带 `TAP = 78` 高在上、
+`js/view.js` 的 `measure()`（常量在 `js/view.js:17-22`）把画布切成三条带：龙头带 `TAP = 78` 高在上、
 桶身（`scale = clamp(availH / maxCap, 7, 46)`，`availH = H − 28 − TAP − DRAIN`）在中、
 下水道带 `DRAIN = 58` 在下。三条判据：
 
 - `zoneAt()` 返回 `{z, i}`，桶身判定上下各让 4 / 8 px，其余落进缝里返回 `'none'`；
-- `actionOf()`（`:147`）**由起手位置决定动作对象**，不是由指针当前压着哪一列决定 —— 这是过拖
+- `actionOf()`（`js/view.js:160`）**由起手位置决定动作对象**，不是由指针当前压着哪一列决定 —— 这是过拖
   不改变答案的原因；起手桶拖回它自己 ⇒ `null`（取消）；
-- `track()`（`:161`）算两个数：`over` 是**未钳制**的投影（测试用它证明手指真的越过了桶沿），
+- `track()`（`js/view.js:174`）算两个数：`over` 是**未钳制**的投影（测试用它证明手指真的越过了桶沿），
   `progress` 是钳到 `[0,1]` 的那一个（预览水位用）；非法拖动的 `progress` 恒为 0，
   所以"预览"不会替一笔试图骗人。
-- `move()` 的 target 是**粘滞**的（`:202-204`）：路过两个桶之间的缝隙不会把已经锁定的目标洗掉。
+- `move()` 的 target 是**粘滞**的（`js/view.js:215-217`）：路过两个桶之间的缝隙不会把已经锁定的目标洗掉。
   这条曾经以另一种方式坏过，见 §7.2。
 
 `window.pour`（`js/main.js:406`）暴露 `state / pool / load / route / pos / play / actions /
 bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store / ops`。
-三个 `*Point()` 走的是 `view.toClient()`（`view.js:134`）——返回**视口 client 坐标**，
+三个 `*Point()` 走的是 `toClient()`（`js/view.js:147`）——返回**视口 client 坐标**，
 外加 `scale` 与 `bw`，所以台架可以算"越过右沿 8 px 以外"这种几何条件而不必猜实现里的布局。
 
 ---
@@ -348,14 +348,14 @@ bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store
 
 ### 7.3 等的是 shell，不是秒表
 
-`Page.navigate` / `location.hash=` 之后轮询 `window.pour.state.id`（`tools/playtest.mjs:109`），
+`Page.navigate` / `location.hash=` 之后轮询 `window.pour.state.id`（`tools/playtest.mjs:118`），
 `tools/verify.sh` 也一样：先轮 `/json/version` **和** web 根目录都活，再跑场景，
 每段结果用**花括号计数**从 console 里截 JSON（headless 会在同一行后面追加文本，
 `JSON.parse(整行)` 是随机失败）。profile 目录 `mktemp -d`，`trap cleanup EXIT` 里 `wait` 掉两个后台
 PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3-4`
 "Everything the script starts exits with the script"），并且明令**不要**加
 `--use-gl=angle --use-angle=swiftshader`（软件光栅会占满核心，而且没有 CDP 客户端时 Chrome 不会自己退）。
-端口是 `CDP_PORT=9341 / WEB_PORT=5190` 两个可覆盖的默认值（`verify.sh:19-20`）。
+端口是 `CDP_PORT=9341 / WEB_PORT=5190` 两个可覆盖的默认值（`tools/verify.sh:19-20`）。
 
 覆盖默认值这件事本身就是礼节的半个理由：这台机器同时只允许一个 headless Chrome。
 **跑之前 `pgrep -fl remote-debugging-port` + `lsof -nP -iTCP -sTCP:LISTEN | grep -E ':(93[0-9][0-9]|51[0-9][0-9])'`，

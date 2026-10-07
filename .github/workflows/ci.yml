@@ -34,6 +34,10 @@ jobs:
         run: npm run check
       - name: Suites
         run: npm run unit
+      # 文档行号对账：README / DESIGN / deliverable 里印着的 `文件:行号` 逐条读回来对账。
+      # 与本地同一条命令（tools/verify.sh 的单元段里也是这一条），不是第二份清单。
+      - name: Doc citations reconcile (文档行号对账)
+        run: node tools/docs-test.mjs
       # The difficulty leg. `npm run balance` is the rig that prints the accept rates and the
       # rejection ledger README quotes, and nothing at merge time ever ran it -- the numbers were
       # guarded by a human remembering the command. Measured here: rc=0 in 20.5s (script self-reports

@@ -93,6 +93,11 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   node tools/deploy-set.mjs || FAILED=1
   node tools/deploy-set-selftest.mjs || FAILED=1
   echo "node totals: rows $NODE_ROWS asserts $NODE_ASSERTS"
+  # 文档行号对账：README / DESIGN / deliverable 里印着的每一条 `文件:行号` 都由这条腿读回来对账。
+  # 它**不在**上面的 test/*.test.mjs 循环里：那 84 行 / 874 条是 README 印着的口径，把第九套混进
+  # 那个循环而不动那句话就是文档说谎（同一条命令也住在 .github/workflows/ci.yml 与 npm run test 的链里）。
+  echo "=== doctest ==="
+  node tools/docs-test.mjs || FAILED=1
 fi
 
 # The two claims that need both layers: the daily puzzle and a share link have to be the same
