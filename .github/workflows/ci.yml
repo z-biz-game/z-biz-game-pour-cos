@@ -31,9 +31,30 @@ jobs:
       # asserts the two cover the same files, and a file that only CI checks is a file nobody
       # checks locally.
       - name: Syntax
-        run: for f in js/*.js js/*/*.js sw.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+        run: npm run check
       - name: Suites
-        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+        run: npm run unit
+      # 文档行号对账：README / DESIGN / deliverable 里印着的 `文件:行号` 逐条读回来对账。
+      # 与本地同一条命令（tools/verify.sh 的单元段里也是这一条），不是第二份清单。
+      - name: Doc citations reconcile (文档行号对账)
+        run: node tools/docs-test.mjs
+      # The difficulty leg. `npm run balance` is the rig that prints the accept rates and the
+      # rejection ledger README quotes, and nothing at merge time ever ran it -- the numbers were
+      # guarded by a human remembering the command. Measured here: rc=0 in 20.5s (script self-reports
+      # 20.3s), which is well under a minute, so CI runs the full default sample, the same command
+      # locals type. The rig's only red condition is a re-solve MISMATCH (process.exitCode = 1);
+      # a load-dependent TIER_MS truncation still prints cut=yes and stays green on purpose.
+      - name: Balance (难度台架)
+        run: npm run balance
+      # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
+      # 都在里面。这一仓曾经因为清单落后于页面而线上 404 自己的 manifest/sw.js/图标，
+      # 而本地一切全绿——因为本地根本没有「按清单拷」这一步。
+      - name: Deploy set gate
+        run: node tools/deploy-set.mjs
+      # 阴性自证：每一类断言当场被打红一次，闸必须点名吃掉那一刀；写在注释里的假路径
+      # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
+      - name: Deploy set gate proves it can fail
+        run: node tools/deploy-set-selftest.mjs
 
   # The page is only proven by driving a real Chrome with real pointer events: the bucket hit
   # test, the "a move that changes nothing costs nothing" rule, the clamped over-drag and the

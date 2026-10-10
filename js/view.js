@@ -80,6 +80,19 @@ export function createView(canvas, { onCommit } = {}) {
   let drag = null; // { i, z0, target, now, action, ok, progress, over }
   let hint = null; // { action, until }  —— until 是 animClock 上的秒
   let raf = 0;
+
+  // ---- 减弱动效（prefers-reduced-motion）----
+  // 本仓有四处随时间走的装饰：① 水流虚线 lineDashOffset 每秒推进 25px（流动的"活水"）；
+  // ② 壶嘴那滴下落的水 t=(now%1600)/1600；③ 通关后达标瓶的呼吸环（1100ms）；
+  // ④ 提示环（900ms）。四处都只改相位，不承载任何状态 —— 指向哪一步由 hint.action
+  // 决定、瓶到没到由 game.pos === comp.need 决定。
+  // 减弱动效下四处相位统统钉成固定值：水线还是水线、壶嘴还是那滴水、环还在、达标环还在，
+  // 只是不再流动。与 ferry-cos / hashi / nine-rings 同口径：相位是装饰，形状是反馈。
+  let reduceMotion = false;
+  const flowOffset = () => (reduceMotion ? -4 : -(performance.now() / 40) % 11);
+  const dripPhase = () => (reduceMotion ? 0.5 : (performance.now() % 1600) / 1600);
+  const goalPhase = () => (reduceMotion ? 0.5 : (performance.now() % 1100) / 1100);
+  const hintPhase = () => (reduceMotion ? 0.5 : (performance.now() % 900) / 900);
   let last = 0;
   let paused = false;
   let animClock = 0; // 秒：唯一可动的东西都读它，暂停即冻结
@@ -631,6 +644,16 @@ export function createView(canvas, { onCommit } = {}) {
   });
 
   return {
+    // The gate the runtime pref flip lands on: idempotent, repaints so the water settles on the
+    // same frame the setting changes rather than at the next repaint.
+    setReduceMotion(v) {
+      const on = !!v;
+      if (on === reduceMotion) return reduceMotion;
+      reduceMotion = on;
+      if (reduceMotion) draw();
+      return reduceMotion;
+    },
+    isReducedMotion: () => reduceMotion,
     attach(next) {
       game = next;
       drag = null;

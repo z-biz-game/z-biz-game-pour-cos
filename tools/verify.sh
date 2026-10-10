@@ -16,7 +16,7 @@
 # 引用」那行判成孤儿，所以调试图一律写到 /tmp。
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-CDP_PORT=${CDP_PORT:-9341}
+CDP_PORT=${CDP_PORT:-9341}; if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then echo ":$CDP_PORT is already LISTENING — a sibling gate or an orphan Chrome holds it; attaching there reads someone else's browser. Wait for it to finish, or rerun with CDP_PORT=<a free port>." >&2; lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >&2 || true; exit 6; fi  # 一机一台：撞在同一个默认口上时不报错的是 Chrome，报错的是绿——先让路再开闸
 WEB_PORT=${WEB_PORT:-5190}
 BASE=${BASE_URL:-http://127.0.0.1:$WEB_PORT/}
 SHOT_DIR=${SHOT_DIR:-/tmp}
@@ -84,7 +84,21 @@ if [ -z "${SKIP_UNIT:-}" ]; then
     NODE_ASSERTS=$((NODE_ASSERTS + ${A:-0}))
     [ $RC -eq 0 ] || FAILED=1
   done
+  # 难度台架：与 ci.yml 的 Balance 步骤同一条命令。默认全量本机实测 20.5 秒，不开浏览器，
+  # 所以本地与 CI 都跑全样本，不缩。
+  echo "=== balance ==="
+  npm run balance || FAILED=1
+  # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑。缺这一步就是「本地全绿、线上 404 自己的
+  # manifest / sw.js / 图标」这一整类坏法。它不碰 Chrome，也不读页面，纯查产物。
+  echo "=== deploy-set ==="
+  node tools/deploy-set.mjs || FAILED=1
+  node tools/deploy-set-selftest.mjs || FAILED=1
   echo "node totals: rows $NODE_ROWS asserts $NODE_ASSERTS"
+  # 文档行号对账：README / DESIGN / deliverable 里印着的每一条 `文件:行号` 都由这条腿读回来对账。
+  # 它**不在**上面的 test/*.test.mjs 循环里：那 84 行 / 874 条是 README 印着的口径，把第九套混进
+  # 那个循环而不动那句话就是文档说谎（同一条命令也住在 .github/workflows/ci.yml 与 npm run test 的链里）。
+  echo "=== doctest ==="
+  node tools/docs-test.mjs || FAILED=1
 fi
 
 # The two claims that need both layers: the daily puzzle and a share link have to be the same

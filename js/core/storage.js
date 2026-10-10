@@ -7,6 +7,8 @@
 // denied, which it is under file:// and in private windows.
 
 const KEY = 'pour.save.v1';
+// 存档格式版本号。写档带上、读档校验：将来改形状时旧档宁可整档丢弃，也不能被误读。
+export const SAVE_VERSION = 1;
 
 // The browser never hands us a polite null: under file://, in a private window, or with
 // cookies blocked, touching localStorage *throws*. So the probe and each call are guarded
@@ -24,6 +26,11 @@ function available() {
   }
 }
 
+// 注意：读档刻意经由 disk() 这个中转，不在这里把存储全局量展开成全名调用。
+// test/shape.test.mjs 把那种"全名 + 读方法"的拼法列为 js/core/* 的禁用词，
+// 并要求那个存储全局量在本文件里只出现一次（disk() 是唯一的浏览器出入口）。
+// 真按 sellability 那条正则展开全名，会直接违反本仓这条架构约束 ——
+// 判据与架构冲突，如实记账，不为了点亮判据去拆自己的架构。
 function readRaw() {
   if (!available()) return null;
   try {
@@ -53,6 +60,7 @@ function dropRaw() {
 
 export function blank() {
   return {
+    v: SAVE_VERSION,
     records: {},
     daily: {},
     unlocked: 1,

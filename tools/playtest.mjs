@@ -779,7 +779,10 @@ const SCENARIOS = {
     const id = g.state.id, par = g.state.par;
     const raw = JSON.parse(localStorage.getItem(KEY));
     rec('the solve reaches localStorage, not only memory', !!(raw && raw.records[id] && raw.records[id].best === par), raw && Object.keys(raw.records || {}));
-    rec('one key holds the whole save', Object.keys(JSON.parse(localStorage.getItem(KEY))).sort().join(',') === 'daily,records,stats,unlocked', Object.keys(JSON.parse(localStorage.getItem(KEY))));
+    // 盘上那一份的键集合：dfdde13 起 blank() 多带一位格式版本（test/storage.test.mjs:122 那句
+    // "and a format version" 是这一形状的出处），所以这里少一个名字就是这条腿在吃旧形状。
+    rec('one key holds the whole save', Object.keys(JSON.parse(localStorage.getItem(KEY))).sort().join(',') === 'daily,records,stats,unlocked,v', Object.keys(JSON.parse(localStorage.getItem(KEY))));
+    rec('the save stamps its own format version', JSON.parse(localStorage.getItem(KEY)).v === 1, JSON.parse(localStorage.getItem(KEY)).v);
     rec('clearing the first level unlocks the second', g.store.unlocked === 2 && raw.unlocked === 2, { unlocked: g.store.unlocked });
     rec('the totals line counts it', /已量出/.test(D('totals').textContent) && /1/.test(D('totals').textContent), D('totals').textContent);
     const shelf2 = document.querySelector("#shelf button[data-index='2']");
