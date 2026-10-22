@@ -103,7 +103,7 @@ b56070022ac55f9d66a1fde3adcb018e
 换掉的理由与全过程见 §4 改动表第 4 行。
 
 `accept` 这一列低得反直觉，原因在 `bake.mjs` 的取题姿势：它**按 par 值轮询取名额**
-（`perWanted`，`tools/bake.mjs:66`）并用 `signature(spec)`（`:42`）去重，所以"同一个 par 的第二十种桶组"
+（`perWanted`（`tools/bake.mjs:66`））并用 `signature(spec)`（`:42`）去重，所以"同一个 par 的第二十种桶组"
 越来越难找。它是计时与配额耦合的产物，**不是**"随便抽一题有多难抽中"——后者是下面这台架的量。
 
 ### 2.2 抽样本身有多难（`node test/balance.mjs`，本机 23.3 秒）

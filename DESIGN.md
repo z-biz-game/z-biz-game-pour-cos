@@ -229,14 +229,14 @@ totals: drawn 7310, accepted 5438, 129.6s
 `test/make.test.mjs` 把这条当成**模型性质**在断言（实测上界恰好 0.50）。
 于是 `routeFeatures()`（`js/core/make.js:32`）仍然打印 `fillShare`（它是一个被量的数，不是一条被执行的规则），
 而 80% 那条规则真正想拦的那一族题改由 `pureTransfer` 拦：`dumps === 0` 且 `par ≤ 4`
-（`TRANSFER_PAR_MAX`，`js/core/make.js:30`）⇒ 一路纯倒来倒去、一滴不浪费，那是算术读数不是测量题。
+（`TRANSFER_PAR_MAX`（`js/core/make.js:30`））⇒ 一路纯倒来倒去、一滴不浪费，那是算术读数不是测量题。
 它在本次 `drip` 档抽样里真的开火 190 次（上表）。**与规格不同之处在这里，本仓没有照抄那个阈值。**
 
 ### 4.5 为什么接受率随"名额"塌下去
 
 `node tools/bake.mjs` 的 `accept` 列（README 贴了整张表）从 `drip` 的 4.94% 掉到 `decant` 的 0.01%。
 不是抽不到题，是**同一个 par 值下能抽到的不同桶集合太少**：`bake` 按 par 轮询取名额
-（`perWanted`，`tools/bake.mjs:66`），并用 `signature(spec)`（`:42`）把
+（`perWanted`（`tools/bake.mjs:66`）），并用 `signature(spec)`（`:42`）把
 "同一组容量 + 同一目标 + 同一个 need"的重复题丢掉，所以名额越大、去重砍得越狠。
 `blend` 档因此只凑到 14 道（`warn: blend only reached 14 puzzles across pars 8,9,10,11`），
 `decant` 凑到 17 道且只覆盖 9 个 par 值里的 6 个（`note: decant drew no puzzle for par 15,17,19`）。
