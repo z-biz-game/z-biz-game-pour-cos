@@ -393,11 +393,13 @@ PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3
 - **不做点击时现场搜索**（包括"只允许 `limit=2`"那种放宽）：§5。
 - **不做成就 / 排行榜 / 签到 / 云存档 / 分享战绩**（契约 §5，E 组禁令）。
   分享只分享谜题本身（`#/lot/<id>`、`#/random/<tier>/<token>`），不带分数。
-- **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：仓里 0 个二进制**文件**，`node_modules` 不存在。
-  唯一的例外是 PWA 安装要的图标：四张（180 any / 192 any / 192 maskable / 512 any）都以 base64 内联在
-  `manifest.webmanifest` 里，字节取自中央美术件，宽高由 `tools/deploy-set.mjs` 的 P 段解码后与 IHDR 真值
-  逐张核对（X13 那把刀证明这一条会红）。`test/shape.test.mjs:81` 钉的是"没有一段真 base64 资产跟着
-  `data:` 走进 js/css/html 里"——清单是 `.webmanifest`，不在那支扫描的扩展名集合内，所以这条约束仍然成立。
+- **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：游戏运行时读不到任何位图——桶、水面、龙头、下水道
+  全部是 `js/view.js` 的 canvas 2D 路径，`node_modules` 也不存在。仓里唯一的二进制**文件**是 `icons/`
+  下那八张安装图标（favicon 16/32、apple-touch 180、192、192 maskable、512、512 maskable）：标签页、
+  PWA 安装与 iOS 主屏要的都是真位图，SVG 与 base64 内联各有各的毛病，宽高由
+  `tools/deploy-set.mjs` 的 P 段与 IHDR 真值逐张核对（X7 那把刀证明这一条会红）。
+  `test/shape.test.mjs:81` 钉的是"除了 `icons/` 以外不许出现二进制文件，且没有一段真 base64 资产跟着
+  `data:` 走进 js/css/html 里"——图标是文件，清单里也不再内联 base64。
 - **不做"只有文件没有接线"的生成器**：`js/core/make.js` 与 `js/core/solve.js` 在 shipped 页面里
   不被 import，`@boot` 用资源列表钉住这一点；它们不是幽灵功能，是构建期工具，
   由 `tools/bake.mjs` 与 `test/` 接线。

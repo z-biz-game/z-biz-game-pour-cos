@@ -78,14 +78,14 @@ test('the package depends on nothing', () => {
 
 // ---------- 3. nothing that is not text ----------
 
-test('the app ships no binary asset of any kind', () => {
+test('the app ships no binary asset beyond the install icons', () => {
   const banned = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.mp3', '.wav', '.ogg',
     '.woff', '.woff2', '.ttf', '.otf', '.eot', '.wasm', '.zip', '.webm', '.mp4'];
-  const found = ALL.filter((f) => banned.some((ext) => f.toLowerCase().endsWith(ext)));
-  eq(found, [], 'every visual is drawn by js/view.js with canvas 2D paths');
-  // 这条量的是"有没有一段真资产跟着这个 scheme 走进文本文件"，不是前缀本身：tools/deploy-set.mjs
-  // 要**说出** data:image/png;base64 这个名字（它把内联图标解码后核 IHDR 真宽高），那不算走私资产。
-  // 门槛取 64 个 base64 字符（≈48 字节），比一张 1x1 PNG 的载荷还短——最小的资产也漏不掉。
+  // 唯一的例外是 icons/：安装图标必须是真的 PNG 文件（标签页、PWA 安装、iOS 主屏都要位图，清单闸的 P 段还要拿 IHDR 真宽高去对账），范围只开这一个目录。
+  const found = ALL.filter((f) => !f.startsWith('icons/') && banned.some((ext) => f.toLowerCase().endsWith(ext)));
+  eq(found, [], 'every visual is drawn by js/view.js with canvas 2D paths; only icons/ holds bitmaps');
+  // 这条量的是"有没有一段真资产跟着这个 scheme 走进文本文件"，不是前缀本身：tools/deploy-set.mjs 要**说出**
+  // data:image/png;base64 这个名字（它把图标核 IHDR 真宽高），那不算走私资产；门槛取 64 个 base64 字符（≈48 字节）。
   const inline = ALL.filter((f) => /\.(js|mjs|css|html|cjs)$/.test(f)
     && /data:(image|audio|font|application\/octet-stream);base64,[A-Za-z0-9+/]{64,}/.test(readFileSync(join(root, f), 'utf8')));
   eq(inline, [], 'and nothing carries a real base64 asset behind a data: URI either');
@@ -96,7 +96,7 @@ test('the page loads nothing from a network', () => {
   eq(/(src|href)\s*=\s*["']https?:/i.test(html), false, 'no remote script, stylesheet or font tag');
   const css = readFileSync(join(root, 'css', 'game.css'), 'utf8');
   eq(/url\(\s*['"]?(https?:|data:)/i.test(css), false, 'the stylesheet references no external or embedded resource');
-  ok(html.includes('<link rel="icon" href="data:,">'), 'an empty icon href so the browser does not request /favicon.ico and log a 404');
+  ok(/<link rel="icon" type="image\/png" sizes="32x32" href="icons\/favicon-32\.png">/.test(html), 'a real icon file is declared, so the browser asks for that one instead of /favicon.ico and logging a 404');
   ok(/<script[^>]+type="module"[^>]+src="js\/main\.js"/.test(html), 'the entry point is loaded as a module');
   ok(html.includes('<canvas'), 'the stage is a canvas element');
   ok(html.includes('name="viewport"'), 'and it is laid out for a phone first');

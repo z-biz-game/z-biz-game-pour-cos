@@ -35,14 +35,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSEMBLE = 'tools/assemble-site.sh';
 // R 段实际检查的路径条数。改页面/清单会改变它——那正是要它变的时候；没改页面却掉了，
 // 说明引用解析不出来的那部分被悄悄放过了。对着 DEPLOY_SET_DUMP=1 的出处表能逐条核。
-const EXPECT_CHECKS = 19;
+const EXPECT_CHECKS = 27;
 // 全绿时这个闸实际跑的断言条数（W/R/P/H 四段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 43;
+const EXPECT_ROWS = 55;
 // H 段扫到的 head 标签条数。H2/H3 只在"扫到了标签"的范围内成立，条数掉了就是解析断在半路
 // （断在半路的语法检查比没有检查更坏：它读起来是绿的）。对着头一遍的出处表逐条数。
-const EXPECT_HEAD_TAGS = 14;
+const EXPECT_HEAD_TAGS = 16;
 
 let rows = 0;
 const fails = [];
@@ -385,6 +385,24 @@ for (const e of entries) {
   const w = head.readUInt32BE(16), h = head.readUInt32BE(20);
   const [dw, dh] = String(e.sizes).split('x').map(Number);
   if (dw) ok(w === dw && h === dh, `P2 ${r} 实际 ${w}x${h} 等于声明的 ${e.sizes}`, '出处 ' + e.from);
+}
+
+// P3 页面自己声明的图标尺寸也要等于那张 PNG 的真宽高：sizes="32x32" 配一张 64 的图，浏览器不报错，
+// 只是标签页上的图标糊了——那种坏法 R 段（文件在不在）与 P2 段（清单声明）都看不见。
+for (const m of html.matchAll(/<link[^>]+rel="[^"]*icon[^"]*"[^>]*>/g)) {
+  const sz = /sizes="(\d+)x(\d+)"/.exec(m[0]);
+  const src = /href="([^"]+)"/.exec(m[0]);
+  if (!sz || !src) continue;              // apple-touch-icon 没写 sizes：宽高由 IHDR 自证，不猜
+  const r = rel(src[1]);
+  const f = path.join(site, r);
+  if (!fs.existsSync(f)) continue;        // 缺文件由 R 段点名，这里不重复报
+  const head = fs.readFileSync(f).subarray(0, 24);
+  if (head.length !== 24 || head.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+    ok(false, `P3 ${r} 是真 PNG 容器`, '不是 PNG 签名');
+    continue;
+  }
+  const w = head.readUInt32BE(16), h = head.readUInt32BE(20);
+  ok(w === Number(sz[1]) && h === Number(sz[2]), `P3 ${r} 实际 ${w}x${h} 等于页面声明的 ${sz[1]}x${sz[2]}`, '');
 }
 
 if (cleanup) fs.rmSync(site, { recursive: true, force: true });

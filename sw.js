@@ -9,10 +9,15 @@
 //      同名文件重绘之后，网络优先这一条保证客户端下一次联网就拿到新字节。
 const VERSION = 'pour-cos-v1';
 const CACHE = `${VERSION}-shell`;
-const PRECACHE = ['index.html', 'manifest.webmanifest'];
+// 图标现在是真的 PNG 文件（icons/ 下那八张），所以缓存清单也得把它们算进来：
+// 装到桌面/主屏时断网也要拿得到那张图，否则图标是一次 404。
+const PRECACHE = ['index.html', 'manifest.webmanifest',
+  'icons/favicon-16.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png',
+  'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-maskable-192.png',
+  'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 
 self.addEventListener('install', (ev) => {
-  // 首屏两件套先抓下来：断网时至少能打开界面，而不是浏览器的错误页。
+  // 首屏那几件先抓下来：断网时至少能打开界面，而不是浏览器的错误页。
   ev.waitUntil(
     caches.open(CACHE).then((c) => c.addAll(PRECACHE).catch(() => {})).then(() => self.skipWaiting())
   );
