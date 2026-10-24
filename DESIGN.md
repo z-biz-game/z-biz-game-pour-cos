@@ -398,8 +398,12 @@ PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3
   下那八张安装图标（favicon 16/32、apple-touch 180、192、192 maskable、512、512 maskable）：标签页、
   PWA 安装与 iOS 主屏要的都是真位图，SVG 与 base64 内联各有各的毛病，宽高由
   `tools/deploy-set.mjs` 的 P 段与 IHDR 真值逐张核对（X7 那把刀证明这一条会红）。
-  `test/shape.test.mjs:81` 钉的是"除了 `icons/` 以外不许出现二进制文件，且没有一段真 base64 资产跟着
-  `data:` 走进 js/css/html 里"——图标是文件，清单里也不再内联 base64。
+  `test/shape.test.mjs:81` 钉的是"除了 `icons/` 下的安装图标集以外不许出现二进制文件，且没有一段真
+  base64 资产跟着 `data:` 走进 js/css/html 里"——图标是文件，清单里也不再内联 base64。
+  这条例外本身也是**有边界的**（`test/shape.test.mjs:97`）：`icons/` 下只准有 PNG、每一张都必须被
+  manifest 或页面真的引用、每张都要有真 PNG 签名；多塞一张没人引用的位图就判红。
+  换句话说，"零二进制资产"这条仓形约束不是被一句声明豁免掉的，是被一条**可机器判定的事实**
+  换了一种更准的写法——其余任何二进制资产仍然判红。
 - **不做"只有文件没有接线"的生成器**：`js/core/make.js` 与 `js/core/solve.js` 在 shipped 页面里
   不被 import，`@boot` 用资源列表钉住这一点；它们不是幽灵功能，是构建期工具，
   由 `tools/bake.mjs` 与 `test/` 接线。
