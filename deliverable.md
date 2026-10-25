@@ -23,7 +23,7 @@
 | 难度带 | `TIERS_META`（已发布，量出来的）：4-5 / 6-7 / 8-11 / 12-20；生成包络 `TIERS`（`js/core/make.js:167`）与它同行同址但**不是一个东西** |
 | 依赖数 | 0（`dependencies` 与 `devDependencies` 都是 `{}`，无 `node_modules`、无 lockfile，由 `test/shape.test.mjs:62` 钉） |
 | 二进制资产 | 8 个**文件**，都在 `icons/`（favicon 16/32、apple-touch 180、192、192 maskable、512、512 maskable；由 `tools/make-icons.py` 按 `css/game.css` 的 token 画）。桶、水面、龙头、下水道仍然全部是 `js/view.js` 的 canvas 2D 路径，运行时不读任何位图；`test/shape.test.mjs:81` 钉的是"除 `icons/` 下的安装图标集外不许出现二进制文件"，且那道例外另有边界（只准 PNG、必须被 manifest/页面引用、每张要真 PNG 签名，`test/shape.test.mjs:97`），并要求任何跟着 `data:` 前缀走进文本文件的 base64 载荷都算红。图标宽高由 `tools/deploy-set.mjs` 的 P 段与 IHDR 真值逐张核对 |
-| 测试钩子 | `window.pour`（`js/main.js:406`），`test/shape.test.mjs:142` 钉它是页面唯一的全局注入点 |
+| 测试钩子 | `window.pour`（`js/main.js:441`），`test/shape.test.mjs:142` 钉它是页面唯一的全局注入点 |
 | 路由 | `#/c/N`、`#/lot/<id>`、`#/daily`、`#/random/<tier>/<token>`（`pour.md` 点名的两条是 `#/lot/<id>` 与 `#/daily`，本仓四条都有） |
 | node 层 | 8 个套件 / **85 行断言 / 880 条 eq-ok** / `fail 0` / `rc=0` |
 | browser 层 | **131 行 / 131 条**：`@boot 18 · @play 22 · @routes 26 · @save 25 · @pointer 40`，末行 `=== ALL GREEN ===` |

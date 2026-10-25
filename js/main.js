@@ -16,6 +16,10 @@ import {
 } from './core/library.js';
 import { todayKey } from './core/rng.js';
 import { createView } from './view.js';
+// 听觉与触觉这两路反馈：视觉与数值之外，桌面上还该有"听得见"的一路。
+// 音频模块自己管手势解锁与真静音（suspend），这里只管把音接到引擎的判定上。
+import { audio } from './audio.js';
+import { haptics } from './haptics.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -37,6 +41,8 @@ const app = {
   hints: 0,
   label: '',
   day: null,
+  // 这一局赢过没有：通关声只响一次（见 finish()）。
+  won: false,
 };
 
 function clampIndex(n) {
@@ -86,6 +92,7 @@ function setGame(lot, label) {
   app.label = label || app.label;
   app.game = createGame(lot);
   app.hints = 0;
+  app.won = false;              // 上一局赢过不算数：这一局还没赢
   view.attach(app.game);
   el.curtain.hidden = true;
   say('');
@@ -233,16 +240,25 @@ function render() {
 // The one place a move happens: the drag from the view, the replay from a test link and the
 // hint's own suggestion all arrive here. A zero-change action is refused by js/core/game.js
 // and must not touch the counter — that refusal is a browser assertion, not a UI detail.
+// 声音接在**引擎的判定分支**上，不是接在"手指碰过屏幕"上：
+//   · core/game.js 的 act() 真挪了桶（res.moved）→ correct
+//   · act() 一步也没挪（倒下去的水量不变 / 这局已量完）→ wrong
+//   · 这一步之后量到了（game.done）→ win，而且只响一次
 function commit(action) {
   const res = act(app.game, action);
   if (!res.moved) {
     view.redraw();
     renderCrumbs();
     say(`${describe(app.game.comp, action)} —— <b>什么也没变</b>，不计步（${res.reason}）`);
+    audio.play('wrong');
+    haptics.wrong();
     return false;
   }
-  if (app.game.done) finish();
-  else {
+  if (app.game.done) {
+    finish();                      // win 在 finish 里响：这一步只出这一声
+  } else {
+    audio.play('correct');         // 引擎真的挪了桶
+    haptics.correct();
     view.redraw();
     renderCrumbs();
     say(`${describe(app.game.comp, action)} · 已用 ${app.game.moves} 次，最少 ${app.lot.par} 次`);
@@ -253,6 +269,12 @@ function commit(action) {
 function finish() {
   const lot = app.lot;
   const g = app.game;
+  // 通关只响一次：量完之后玩家还能继续倒，每倒一次都重播通关声是吵的。
+  if (!app.won) {
+    app.won = true;
+    audio.play('win');
+    haptics.correct();
+  }
   const rec = store.solve(lot.id, { moves: g.moves, par: lot.par, hints: app.hints });
   if (app.day) store.markDaily(app.day, lot.id);
   let nextIndex = 0;
@@ -325,6 +347,8 @@ el.modes.addEventListener('click', (ev) => {
 
 el.undo.addEventListener('click', () => {
   if (undo(app.game)) {
+    audio.play('move');         // 水位退了一步
+    haptics.tap();
     el.curtain.hidden = true;
     view.redraw();
     renderCrumbs();
@@ -332,6 +356,8 @@ el.undo.addEventListener('click', () => {
     else say('撤回一步');
   } else {
     say('没有可撤的步');
+    audio.play('wrong');
+    haptics.wrong();
   }
 });
 
@@ -341,13 +367,19 @@ el.hint.addEventListener('click', () => {
   const h = hint(app.game);
   if (!h) {
     say('这一题已经量完了');
+    audio.play('wrong');
+    haptics.wrong();
     return;
   }
   if (h.off) {
     say('你已经偏离了最短路线 —— 撤销到亮起的步，或者重开。前端不重新搜索，所以这里只报烘焙的那条路');
+    audio.play('wrong');
+    haptics.wrong();
     return;
   }
   app.hints++;
+  audio.play('move');           // 提示：只说下一步，不代倒
+  haptics.tap();
   view.showHint(h.action);
   const a = h.action;
   say(a.op === POUR
@@ -359,6 +391,9 @@ el.hint.addEventListener('click', () => {
 function restart() {
   reset(app.game);
   app.hints = 0;
+  app.won = false;            // 重开就是新的一局：通关声重新算一次
+  audio.play('move');
+  haptics.tap();
   el.curtain.hidden = true;
   view.attach(app.game); // resets the water tween as well as the levels
   render();
@@ -549,3 +584,26 @@ if (motionQuery) {
 }
 window.pour.setReduceMotion = applyReduceMotion;
 window.pour.isReducedMotion = () => view.isReducedMotion();
+
+// ---- 音效开关（#btn-sound）----
+//
+// 静音走 `audio.setMuted(true)`，那是 `ctx.suspend()`：整个 AudioContext 挂起。
+// **不许**改成像"把 master.gain 拧到 0"那样 —— 只拧 gain 是假静音：节点照建、时钟照跑，
+// 取消静音之后还有一截尾巴在响。真正的静音必须是挂起整个上下文。
+//
+// 按钮找不到就不装（和全屏那一条同一条纪律）：留一串没人按的代码等于没做这个功能。
+(function bindSound() {
+  const btn = document.getElementById('btn-sound');
+  if (!btn) return;
+  function paint() {
+    const on = !audio.muted;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? '音效：开' : '音效：关';
+    btn.title = on ? '点击关闭音效' : '点击开启音效';
+  }
+  btn.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    paint();
+  });
+  paint();
+})();

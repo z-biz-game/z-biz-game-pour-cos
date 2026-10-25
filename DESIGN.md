@@ -301,7 +301,7 @@ totals: drawn 7310, accepted 5438, 129.6s
 - `move()` 的 target 是**粘滞**的（`js/view.js:215-217`）：路过两个桶之间的缝隙不会把已经锁定的目标洗掉。
   这条曾经以另一种方式坏过，见 §7.2。
 
-`window.pour`（`js/main.js:406`）暴露 `state / pool / load / route / pos / play / actions /
+`window.pour`（`js/main.js:441`）暴露 `state / pool / load / route / pos / play / actions /
 bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store / ops`。
 三个 `*Point()` 走的是 `toClient()`（`js/view.js:147`）——返回**视口 client 坐标**，
 外加 `scale` 与 `bw`，所以台架可以算"越过右沿 8 px 以外"这种几何条件而不必猜实现里的布局。
