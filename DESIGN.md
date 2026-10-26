@@ -229,14 +229,14 @@ totals: drawn 7310, accepted 5438, 129.6s
 `test/make.test.mjs` 把这条当成**模型性质**在断言（实测上界恰好 0.50）。
 于是 `routeFeatures()`（`js/core/make.js:32`）仍然打印 `fillShare`（它是一个被量的数，不是一条被执行的规则），
 而 80% 那条规则真正想拦的那一族题改由 `pureTransfer` 拦：`dumps === 0` 且 `par ≤ 4`
-（`TRANSFER_PAR_MAX`，`js/core/make.js:30`）⇒ 一路纯倒来倒去、一滴不浪费，那是算术读数不是测量题。
+（`TRANSFER_PAR_MAX`（`js/core/make.js:30`））⇒ 一路纯倒来倒去、一滴不浪费，那是算术读数不是测量题。
 它在本次 `drip` 档抽样里真的开火 190 次（上表）。**与规格不同之处在这里，本仓没有照抄那个阈值。**
 
 ### 4.5 为什么接受率随"名额"塌下去
 
 `node tools/bake.mjs` 的 `accept` 列（README 贴了整张表）从 `drip` 的 4.94% 掉到 `decant` 的 0.01%。
 不是抽不到题，是**同一个 par 值下能抽到的不同桶集合太少**：`bake` 按 par 轮询取名额
-（`perWanted`，`tools/bake.mjs:66`），并用 `signature(spec)`（`:42`）把
+（`perWanted`（`tools/bake.mjs:66`）），并用 `signature(spec)`（`:42`）把
 "同一组容量 + 同一目标 + 同一个 need"的重复题丢掉，所以名额越大、去重砍得越狠。
 `blend` 档因此只凑到 14 道（`warn: blend only reached 14 puzzles across pars 8,9,10,11`），
 `decant` 凑到 17 道且只覆盖 9 个 par 值里的 6 个（`note: decant drew no puzzle for par 15,17,19`）。
@@ -301,7 +301,7 @@ totals: drawn 7310, accepted 5438, 129.6s
 - `move()` 的 target 是**粘滞**的（`js/view.js:215-217`）：路过两个桶之间的缝隙不会把已经锁定的目标洗掉。
   这条曾经以另一种方式坏过，见 §7.2。
 
-`window.pour`（`js/main.js:406`）暴露 `state / pool / load / route / pos / play / actions /
+`window.pour`（`js/main.js:441`）暴露 `state / pool / load / route / pos / play / actions /
 bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store / ops`。
 三个 `*Point()` 走的是 `toClient()`（`js/view.js:147`）——返回**视口 client 坐标**，
 外加 `scale` 与 `bw`，所以台架可以算"越过右沿 8 px 以外"这种几何条件而不必猜实现里的布局。
@@ -393,11 +393,17 @@ PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3
 - **不做点击时现场搜索**（包括"只允许 `limit=2`"那种放宽）：§5。
 - **不做成就 / 排行榜 / 签到 / 云存档 / 分享战绩**（契约 §5，E 组禁令）。
   分享只分享谜题本身（`#/lot/<id>`、`#/random/<tier>/<token>`），不带分数。
-- **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：仓里 0 个二进制**文件**，`node_modules` 不存在。
-  唯一的例外是 PWA 安装要的图标：四张（180 any / 192 any / 192 maskable / 512 any）都以 base64 内联在
-  `manifest.webmanifest` 里，字节取自中央美术件，宽高由 `tools/deploy-set.mjs` 的 P 段解码后与 IHDR 真值
-  逐张核对（X13 那把刀证明这一条会红）。`test/shape.test.mjs:81` 钉的是"没有一段真 base64 资产跟着
-  `data:` 走进 js/css/html 里"——清单是 `.webmanifest`，不在那支扫描的扩展名集合内，所以这条约束仍然成立。
+- **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：游戏运行时读不到任何位图——桶、水面、龙头、下水道
+  全部是 `js/view.js` 的 canvas 2D 路径，`node_modules` 也不存在。仓里唯一的二进制**文件**是 `icons/`
+  下那八张安装图标（favicon 16/32、apple-touch 180、192、192 maskable、512、512 maskable）：标签页、
+  PWA 安装与 iOS 主屏要的都是真位图，SVG 与 base64 内联各有各的毛病，宽高由
+  `tools/deploy-set.mjs` 的 P 段与 IHDR 真值逐张核对（X7 那把刀证明这一条会红）。
+  `test/shape.test.mjs:81` 钉的是"除了 `icons/` 下的安装图标集以外不许出现二进制文件，且没有一段真
+  base64 资产跟着 `data:` 走进 js/css/html 里"——图标是文件，清单里也不再内联 base64。
+  这条例外本身也是**有边界的**（`test/shape.test.mjs:97`）：`icons/` 下只准有 PNG、每一张都必须被
+  manifest 或页面真的引用、每张都要有真 PNG 签名；多塞一张没人引用的位图就判红。
+  换句话说，"零二进制资产"这条仓形约束不是被一句声明豁免掉的，是被一条**可机器判定的事实**
+  换了一种更准的写法——其余任何二进制资产仍然判红。
 - **不做"只有文件没有接线"的生成器**：`js/core/make.js` 与 `js/core/solve.js` 在 shipped 页面里
   不被 import，`@boot` 用资源列表钉住这一点；它们不是幽灵功能，是构建期工具，
   由 `tools/bake.mjs` 与 `test/` 接线。

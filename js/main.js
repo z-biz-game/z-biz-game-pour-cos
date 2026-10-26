@@ -16,6 +16,8 @@ import {
 } from './core/library.js';
 import { todayKey } from './core/rng.js';
 import { audio } from './audio.js';
+// 触觉是第三路反馈：`navigator.vibrate` 在 iOS Safari 上不存在，模块自己会空操作。
+import { haptics } from './haptics.js';
 import { prefs } from './prefs.js';
 import { createView } from './view.js';
 
@@ -249,6 +251,7 @@ function commit(action) {
     view.redraw();
     renderCrumbs();
     audio.refuse();
+    haptics.wrong();
     say(`${describe(app.game.comp, action)} —— <b>什么也没变</b>，不计步（${res.reason}）`);
     return false;
   }
@@ -257,6 +260,7 @@ function commit(action) {
   if (action.op === FILL) audio.fill();
   else if (action.op === DUMP) audio.dump();
   else audio.pour();
+  haptics.correct();               // 引擎真的挪了桶：一次有效操作成功
   if (app.game.done) finish();
   else {
     view.redraw();
@@ -457,6 +461,7 @@ el.modes.addEventListener('click', (ev) => {
 el.undo.addEventListener('click', () => {
   if (undo(app.game)) {
     el.curtain.hidden = true;
+    haptics.tap();               // 水位退了一步
     view.redraw();
     renderCrumbs();
     if (app.game.moves === 0) say('回到起点');
