@@ -271,9 +271,9 @@ totals: drawn 7310, accepted 5438, 129.6s
 | 画面 | `js/view.js` | 像素、指针坐标、预览水位 | 任何合法性判断（只**问** `game.legal`） |
 | 外壳 | `js/main.js` | 路由、DOM、存档写入、`window.pour` | 搜索、生成 |
 
-`test/shape.test.mjs:41` 是字面量扫描（`window.` / `document.` / `navigator.` / `localStorage.getItem` /
+`test/shape.test.mjs:47` 是字面量扫描（`window.` / `document.` / `navigator.` / `localStorage.getItem` /
 `requestAnimationFrame` / `getContext` / `canvas` 都算泄漏），唯一豁免是 `js/core/storage.js`，
-而它被钉成"全仓恰好一处 `globalThis.localStorage`"（`:55`）。
+而它被钉成"全仓恰好一处 `globalThis.localStorage`"（`:66`）。
 豁免的理由是它的职责：没有 `window` 也要能跑，所以 `try/catch` 包住而不是 `window.` 起头
 ——`file://` 和某些隐私模式下 `localStorage` 是**抛异常**而不是返回 `null`。
 
@@ -288,22 +288,22 @@ totals: drawn 7310, accepted 5438, 129.6s
 
 ## 6. 手势：状态机之外的那点几何
 
-`js/view.js` 的 `measure()`（常量在 `js/view.js:17-22`）把画布切成三条带：龙头带 `TAP = 78` 高在上、
+`js/view.js` 的 `measure()`（常量在 `js/view.js:28-33`）把画布切成三条带：龙头带 `TAP = 78` 高在上、
 桶身（`scale = clamp(availH / maxCap, 7, 46)`，`availH = H − 28 − TAP − DRAIN`）在中、
 下水道带 `DRAIN = 58` 在下。三条判据：
 
 - `zoneAt()` 返回 `{z, i}`，桶身判定上下各让 4 / 8 px，其余落进缝里返回 `'none'`；
-- `actionOf()`（`js/view.js:160`）**由起手位置决定动作对象**，不是由指针当前压着哪一列决定 —— 这是过拖
+- `actionOf()`（`js/view.js:197`）**由起手位置决定动作对象**，不是由指针当前压着哪一列决定 —— 这是过拖
   不改变答案的原因；起手桶拖回它自己 ⇒ `null`（取消）；
-- `track()`（`js/view.js:174`）算两个数：`over` 是**未钳制**的投影（测试用它证明手指真的越过了桶沿），
+- `track()`（`js/view.js:211`）算两个数：`over` 是**未钳制**的投影（测试用它证明手指真的越过了桶沿），
   `progress` 是钳到 `[0,1]` 的那一个（预览水位用）；非法拖动的 `progress` 恒为 0，
   所以"预览"不会替一笔试图骗人。
-- `move()` 的 target 是**粘滞**的（`js/view.js:215-217`）：路过两个桶之间的缝隙不会把已经锁定的目标洗掉。
+- `move()` 的 target 是**粘滞**的（`js/view.js:249-256`）：路过两个桶之间的缝隙不会把已经锁定的目标洗掉。
   这条曾经以另一种方式坏过，见 §7.2。
 
-`window.pour`（`js/main.js:441`）暴露 `state / pool / load / route / pos / play / actions /
+`window.pour`（`js/main.js:562`）暴露 `state / pool / load / route / pos / play / actions /
 bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store / ops`。
-三个 `*Point()` 走的是 `toClient()`（`js/view.js:147`）——返回**视口 client 坐标**，
+三个 `*Point()` 走的是 `toClient()`（`js/view.js:184`）——返回**视口 client 坐标**，
 外加 `scale` 与 `bw`，所以台架可以算"越过右沿 8 px 以外"这种几何条件而不必猜实现里的布局。
 
 ---
@@ -312,7 +312,7 @@ bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store
 
 ### 7.1 为什么是 CDP 而不是 Playwright
 
-`package.json` 的 `dependencies` 与 `devDependencies` 都是 `{}`（`test/shape.test.mjs:62` 钉着，
+`package.json` 的 `dependencies` 与 `devDependencies` 都是 `{}`（`test/shape.test.mjs:77` 钉着，
 并且连"import 里出现非相对、非 `node:` 的裸模块名"都算失败）。Node 21+ 自带全局 `fetch` 与
 `WebSocket`，`tools/playtest.mjs` 用它们直讲 CDP（`Input.dispatchMouseEvent` /
 `Input.dispatchKeyEvent` / `Page.captureScreenshot` / `Runtime.evaluate`）就够了，
@@ -355,7 +355,7 @@ bucketPoint / faucetPoint / drainPoint / dragState / hintOnce / undoOnce / store
 PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3-4`
 "Everything the script starts exits with the script"），并且明令**不要**加
 `--use-gl=angle --use-angle=swiftshader`（软件光栅会占满核心，而且没有 CDP 客户端时 Chrome 不会自己退）。
-端口是 `CDP_PORT=9341 / WEB_PORT=5190` 两个可覆盖的默认值（`tools/verify.sh:19-20`）。
+端口是 `CDP_PORT=9341 / WEB_PORT=5190` 两个可覆盖的默认值（`tools/verify.sh:19-28`）。
 
 覆盖默认值这件事本身就是礼节的半个理由：这台机器同时只允许一个 headless Chrome。
 **跑之前 `pgrep -fl remote-debugging-port` + `lsof -nP -iTCP -sTCP:LISTEN | grep -E ':(93[0-9][0-9]|51[0-9][0-9])'`，
@@ -376,7 +376,7 @@ PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3
 台架收集 console 的过滤条件是 `level === 'error' || source === 'rendering'`
 （`tools/playtest.mjs:92`），所以这条性能提示会被抓出来**给人看**，但它不是一条断言，
 也不影响任何行的通过与否。它来自**台架自己**用 `getImageData` 回读像素（证明"画布真的画了东西"），
-而上下文是 `js/view.js:50` 的 `canvas.getContext('2d')` —— 属性不能在事后补。
+而上下文是 `js/view.js:76` 的 `canvas.getContext('2d')` —— 属性不能在事后补。
 本仓没有为此把 shipped 上下文改成 `{ willReadFrequently: true }`：那条属性会把水面渐变与每帧重绘
 推到 CPU 后端，为了消一条测试噪音去改 shipped 渲染路径是反的。（九连环那仓走了另一条路，
 它的 `view.js` 带着这个属性；两种选择都自洽，但**别在 pour 里照抄**，因为这里警告来自台架。）
@@ -395,12 +395,12 @@ PID —— 脚本头注释就把这条承诺写在第一句（`tools/verify.sh:3
   分享只分享谜题本身（`#/lot/<id>`、`#/random/<tier>/<token>`），不带分数。
 - **不加图片 / 音频 / 字体 / 打包器 / npm 依赖**：游戏运行时读不到任何位图——桶、水面、龙头、下水道
   全部是 `js/view.js` 的 canvas 2D 路径，`node_modules` 也不存在。仓里唯一的二进制**文件**是 `icons/`
-  下那八张安装图标（favicon 16/32、apple-touch 180、192、192 maskable、512、512 maskable）：标签页、
+  下那十张安装图标（favicon 16/32/48、apple-touch 180、64/96/192/512/1024、maskable 512）：标签页、
   PWA 安装与 iOS 主屏要的都是真位图，SVG 与 base64 内联各有各的毛病，宽高由
   `tools/deploy-set.mjs` 的 P 段与 IHDR 真值逐张核对（X7 那把刀证明这一条会红）。
-  `test/shape.test.mjs:81` 钉的是"除了 `icons/` 下的安装图标集以外不许出现二进制文件，且没有一段真
+  `test/shape.test.mjs:113` 钉的是"除了 `icons/` 下的安装图标集以外不许出现二进制文件，且没有一段真
   base64 资产跟着 `data:` 走进 js/css/html 里"——图标是文件，清单里也不再内联 base64。
-  这条例外本身也是**有边界的**（`test/shape.test.mjs:97`）：`icons/` 下只准有 PNG、每一张都必须被
+  这条例外本身也是**有边界的**（`test/shape.test.mjs:113`）：`icons/` 下只准有 PNG、每一张都必须被
   manifest 或页面真的引用、每张都要有真 PNG 签名；多塞一张没人引用的位图就判红。
   换句话说，"零二进制资产"这条仓形约束不是被一句声明豁免掉的，是被一条**可机器判定的事实**
   换了一种更准的写法——其余任何二进制资产仍然判红。

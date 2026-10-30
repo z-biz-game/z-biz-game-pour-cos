@@ -35,14 +35,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSEMBLE = 'tools/assemble-site.sh';
 // R 段实际检查的路径条数。改页面/清单会改变它——那正是要它变的时候；没改页面却掉了，
 // 说明引用解析不出来的那部分被悄悄放过了。对着 DEPLOY_SET_DUMP=1 的出处表能逐条核。
-const EXPECT_CHECKS = 19;
+const EXPECT_CHECKS = 35;
 // 全绿时这个闸实际跑的断言条数（W/R/P/H 四段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 43;
+const EXPECT_ROWS = 65;
 // H 段扫到的 head 标签条数。H2/H3 只在"扫到了标签"的范围内成立，条数掉了就是解析断在半路
 // （断在半路的语法检查比没有检查更坏：它读起来是绿的）。对着头一遍的出处表逐条数。
-const EXPECT_HEAD_TAGS = 14;
+const EXPECT_HEAD_TAGS = 23;
 
 let rows = 0;
 const fails = [];
@@ -221,6 +221,13 @@ const stripComments = (src, blocksOnly) => {
   return out;
 };
 
+// CSS 里的 data: URI 整段遮掉再扫 url()：studio.css 的程序化噪点里嵌着
+// `filter="url(%23n)"`，那是 SVG 内部的片段引用，不是文件路径。不遮的话内层 url(%23n)
+// 会被当成 css/%23n 一条引用，产物里当然没有这个文件——闸红的是自己的解析，不是站点。
+const maskDataUrls = (css) => css
+  .replace(/url\(\s*(['"])data:[\s\S]*?\1\s*\)/gi, 'url(data:masked)')
+  .replace(/url\(\s*data:[^)\s]*/gi, 'url(data:masked');
+
 const dirOf = (r) => {
   const d = path.posix.dirname(r);
   return d === '.' ? '' : d;
@@ -304,7 +311,7 @@ for (let k = 0; k < refs.length; k += 1) {
     continue;
   }
   if (r.endsWith('.css')) {
-    for (const m of stripComments(text, true).matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+    for (const m of maskDataUrls(stripComments(text, true)).matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
       push(r, m[1], dirOf(r));
     }
     continue;

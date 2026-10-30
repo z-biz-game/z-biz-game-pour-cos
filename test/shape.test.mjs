@@ -16,6 +16,11 @@ import { test, ok, eq, run } from '../tools/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// 只走会进产物/进仓的目录。`_scratch/` 是本机排查用的副本（.gitignore 里有它），把它算进来
+// 等于让上次调查留下的旧树参与本轮对账：树里多 14 张旧位图、旧 css 里的 data: 噪声都会
+// 被当成"仓里的事实"。构建产物同理（_site/dist/.electron-cache）。
+const SKIP_DIRS = new Set(['.git', 'node_modules', '_scratch', '_site', 'dist', '.electron-cache']);
+
 function walk(dir, filter) {
   const out = [];
   const stack = [join(root, dir)];
@@ -24,7 +29,7 @@ function walk(dir, filter) {
     if (++guard > 5000) throw new Error('walk: too many directories');
     const here = stack.pop();
     for (const entry of readdirSync(here)) {
-      if (entry === '.git' || entry === 'node_modules' || entry === '.DS_Store') continue;
+      if (SKIP_DIRS.has(entry) || entry === '.DS_Store') continue;
       const full = join(here, entry);
       if (statSync(full).isDirectory()) stack.push(full);
       else if (filter(full)) out.push(relative(root, full).split(sep).join('/'));
@@ -118,9 +123,14 @@ test('every bitmap in the tree is a real PNG the generator can rebuild', () => {
   for (const dir of ['icons/', 'assets/og/', 'assets/sprites/', 'assets/textures/']) {
     ok(gen.includes(dir), `生成器自己写出 ${dir}`);
   }
-  const inline = ALL.filter((f) => /\.(js|mjs|css|html|cjs)$/.test(f)
-    && /data:(image|audio|font|application\/octet-stream)/.test(readFileSync(join(root, f), 'utf8')));
-  eq(inline, [], '也没有任何资源被塞成 data: URI');
+  // 只查会出货的源，不查闸自己：`tools/deploy-set*.mjs` 必须把 `data:image/png` 写成字面量
+  // 才认得出内联图标，拿同一张正则去查它只会把"抓贼的人"当成贼。`data:image/svg+xml` 是
+  // studio.css 里那张程序化噪点（设计系统的一层底纹，不是位图资产），单独放行。
+  const shipped = [...APP, ...walk('css', (f) => f.endsWith('.css')),
+    'index.html', 'sw.js', 'server.cjs', 'electron/main.cjs'];
+  const inline = shipped.filter((f) => /data:(?:image\/(?!svg\+xml)|audio|font|application\/octet-stream)/
+    .test(readFileSync(join(root, f), 'utf8')));
+  eq(inline, [], '也没有任何位图/字体/音频被塞成 data: URI');
 });
 
 test('every bitmap is referenced by something that ships, and every reference resolves', () => {
@@ -128,7 +138,12 @@ test('every bitmap is referenced by something that ships, and every reference re
   const mf = JSON.parse(readFileSync(join(root, 'manifest.webmanifest'), 'utf8'));
   const view = readFileSync(join(root, 'js/view.js'), 'utf8');
   const refs = new Set();
-  for (const m of html.matchAll(/(?:href|content)\s*=\s*"((?:icons|assets)\/[^"]+)"/g)) refs.add(m[1]);
+  // 社交卡的 og:image 必须是绝对 URL（抓取器不解析相对路径），所以这里按 URL 尾巴认，
+  // 而不是按"以 assets/ 开头"认：`https://…/<repo>/assets/og/pour-og.png` 仍然对到盘上那张。
+  for (const m of html.matchAll(/(?:href|content)\s*=\s*"([^"]+)"/g)) {
+    const hit = /(?:^|\/)((?:icons|assets)\/[^"]+)$/.exec(m[1]);
+    if (hit) refs.add(hit[1]);
+  }
   for (const icon of mf.icons) refs.add(icon.src);
   for (const m of view.matchAll(/['"]((?:assets|icons)\/[^'"]+\.png)['"]/g)) refs.add(m[1]);
   eq([...refs].filter((r) => !existsSync(join(root, r))), [], `${refs.size} 条引用全部落在盘上`);
@@ -153,7 +168,8 @@ test('the page loads nothing from a network', () => {
   ok(/<link rel="icon"[^>]+sizes="32x32"[^>]+href="icons\/favicon-32\.png"/.test(html), 'a real 32px favicon link');
   ok(/<link rel="apple-touch-icon" href="icons\/apple-touch-icon\.png">/.test(html), 'iOS home-screen icon');
   ok(/<link rel="manifest" href="manifest\.webmanifest">/.test(html), 'the install manifest is linked from the page');
-  ok(/property="og:image"[^>]+content="assets\/og\/pour-og\.png"/.test(html), 'the social card points at a bitmap on disk');
+  ok(/property="og:image"[^>]+content="https:\/\/z-biz-game\.github\.io\/z-biz-game-pour-cos\/assets\/og\/pour-og\.png"/.test(html),
+    'the social card points at the absolute Pages URL of a bitmap on disk');
   ok(/<script[^>]+type="module"[^>]+src="js\/main\.js"/.test(html), 'the entry point is loaded as a module');
   ok(html.includes('<canvas'), 'the stage is a canvas element');
   ok(html.includes('name="viewport"'), 'and it is laid out for a phone first');
@@ -168,11 +184,22 @@ test('the install surface is a real manifest plus a network-first service worker
   ok(mf.icons.some((i) => i.purpose === 'maskable' && i.sizes === '512x512'), 'Android 自适应图标要有 maskable');
   const sw = readFileSync(join(root, 'sw.js'), 'utf8');
   ok(/VERSION\s*=\s*'[\w-]+-v\d+'/.test(sw), '缓存名带版本号，activate 才换得掉整代');
-  ok(/fetch\(req\)\.then[\s\S]*\.catch\([\s\S]*caches\.match/.test(sw), '网络优先，失败才回落缓存');
+  // 顺序即语义：先 fetch，网络挂了才 .catch，caches.match 只在 catch 里面。原来那条正则
+  // 写死了 `fetch(req).then` 不能换行，链式排版一改就假红——这里改按出现位置判。
+  const body = sw.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+  const atFetch = body.indexOf('fetch(req)');
+  const atCatch = atFetch < 0 ? -1 : body.indexOf('.catch(', atFetch);
+  const atMatch = body.indexOf('caches.match(req)');
+  ok(atFetch >= 0 && atFetch < atCatch && atCatch < atMatch,
+    `网络优先，失败才回落缓存（fetch@${atFetch} catch@${atCatch} match@${atMatch}）`);
   eq(/respondWith\(caches\.match/.test(sw), false, '不是 cache-first：它会把 js 钉死在旧版');
   const html = readFileSync(join(root, 'index.html'), 'utf8');
-  ok(html.includes("location.protocol !== 'file:'"), 'Electron 的 file:// 下不注册 SW（注册必失败并冒成控制台错误）');
-  ok(/navigator\.serviceWorker\.register/.test(html), '但 http/https 下确实注册');
+  // 注册逻辑在 js/sw-register.js 里（页面上是带 defer 的普通脚本，模块化入口不负责它）。
+  // 判据仍要落在真代码上：http/https 才注册，file:// 下一条都不发。
+  const reg = readFileSync(join(root, 'js/sw-register.js'), 'utf8');
+  ok(html.includes('js/sw-register.js'), '注册脚本由页面加载');
+  ok(/location\.protocol/.test(reg) && /https\?:/.test(reg), 'Electron 的 file:// 下不注册 SW（注册必失败并冒成控制台错误）');
+  ok(/navigator\.serviceWorker\.register\(\s*['"]sw\.js['"]/.test(reg), '但 http/https 下确实注册');
 });
 
 test('the desktop shell points at a bitmap that exists', () => {
@@ -266,13 +293,20 @@ test('npm run check sees every source file that ships', () => {
   eq(pkg.scripts.test.includes('npm run check'), true, 'and npm test checks syntax first');
 });
 
-test('the CI syntax glob is the same list as npm run check', () => {
+test('the CI syntax step covers the same files as npm run check', () => {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const ci = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
-  const line = ci.split('\n').find((l) => l.includes('node --check')) || '(ci.yml has no syntax step)';
+  const steps = ci.split('\n').map((l) => l.trim()).filter((l) => /^run:/.test(l)
+    && /(?:node --check|npm run check)/.test(l));
+  ok(steps.length >= 1, 'ci.yml 里有一行真的做语法检查');
   const grab = (s) => ((s.match(/for f in ([^;]+);/) || ['', ''])[1] || '').trim();
-  eq(grab(line), grab(pkg.scripts.check), 'CI 少检一个文件，等于那个文件本地绿了线上没人看');
-  ok(grab(line).includes('sw.js'), `the CI list is ${grab(line)}`);
+  // 两种写法都认：抄一份 glob（必须与 package.json 逐字相同），或直接 `npm run check`
+  // （跑的就是同一份清单，比手抄更不容易漂）。少检一个文件＝本地绿、线上没人看。
+  const inline = steps.filter((l) => grab(l) !== '' && grab(l) === grab(pkg.scripts.check));
+  const viaNpm = steps.filter((l) => /^run:\s*npm run check\b/.test(l));
+  ok(inline.length + viaNpm.length >= 1,
+    `CI 语法步与 npm run check 不是同一份清单：${steps.join(' | ') || '（一行都没有）'}`);
+  ok(pkg.scripts.check.includes('sw.js'), `npm run check 的清单是 ${grab(pkg.scripts.check)}`);
 });
 
 // ---------- 7. the thumb floor lands on controls that really exist ----------

@@ -365,10 +365,16 @@ ok('D9c CI 的那一步跑的也是这一条命令（与本地同一条，不是
   ci.split('\n').filter((l) => l.trim().startsWith('run:') && l.includes(CMD)).slice(0, 2).join(' / '));
 const unitScript = pkg.scripts.unit || '';
 const nodeSuites = fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.test.mjs')).length;
+// 套件数不从盘上抄一个写死的常数进闸：那样加一个套件时闸绿着、README 先说谎。改成读 README
+// 那句话里的数，与目录实数相等才算过——两边谁动谁红。中文数字够用到十。
+const CN_DIGITS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const suiteClaim = /([一二三四五六七八九十]+|\d+)\s*个 node 套件/.exec(readme);
+const claimedSuites = suiteClaim ? (CN_DIGITS[suiteClaim[1]] ?? Number(suiteClaim[1])) : NaN;
 ok('D9d 这条闸进 `npm test` 的链，但**不进** `npm run unit` 的那个 test/*.test.mjs 循环——' +
-  'README 印的是「八个 node 套件」，把它算成第九个就是文档说谎（这一格现在当场数目录里的套件数并等于 8）',
-  chain.includes(CMD) && !unitScript.includes('docs-test') && nodeSuites === 8,
-  `链含本闸=${chain.includes(CMD)} · unit=${unitScript} · test/*.test.mjs 实数 ${nodeSuites}`);
+  '而 README 印的套件数必须等于目录里的实数（两边差一个就是文档说谎）',
+  chain.includes(CMD) && !unitScript.includes('docs-test') && claimedSuites === nodeSuites,
+  `链含本闸=${chain.includes(CMD)} · unit=${unitScript} · README=${suiteClaim ? suiteClaim[1] : '（没写）'} · test/*.test.mjs 实数 ${nodeSuites}`);
 
 // ── 打印 ──────────────────────────────────────────────────────────────────
 // 条数台账：文档抄的是这条腿自己数的断言总数，所以这一条要算进它自己的数里——先拿 checks+1 去对文档，

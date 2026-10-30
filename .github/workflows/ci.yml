@@ -27,9 +27,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Keep this glob list byte-identical to `npm run check` in package.json — shape.test.mjs
-      # asserts the two cover the same files, and a file that only CI checks is a file nobody
-      # checks locally.
+      # This step *is* `npm run check` — not a copy of its glob list. shape.test.mjs accepts
+      # either form but pins the two to the same files, so a file that only CI checks (or only
+      # local checks) still fails the build.
       - name: Syntax
         run: npm run check
       - name: Suites

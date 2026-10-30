@@ -17,10 +17,10 @@
   再让 BFS 决定，两把尺子的对账是 `test/bezout.test.mjs`（见下）。
 - 零依赖、零美术、零打包器：只有 `index.html` + `css/` + `js/`，桶、水面、龙头、下水道全部由
   `js/view.js` 用 canvas 2D 路径画出来，**运行时不读任何位图**。仓里唯一的二进制文件是 `icons/` 下
-  那八张安装图标（标签页、PWA 安装、iOS 主屏要的都是真 PNG，宽高由上线清单闸的 P 段拿 IHDR 逐张
+  那十张安装图标（标签页、PWA 安装、iOS 主屏要的都是真 PNG，宽高由上线清单闸的 P 段拿 IHDR 逐张
   核对）；**这个例外是有边界的**——只准 PNG、每一张都必须被 manifest 或页面真的引用、每张都要有真 PNG 签名
-  （`test/shape.test.mjs:97` 逐条钉死），多塞一张没人引用的位图就判红；其余任何二进制文件仍然判红。
-  它们由 `tools/make-icons.py` 画出来，配色只取 `css/game.css` 的 token。
+  （`test/shape.test.mjs:113` 逐条钉死），多塞一张没人引用的位图就判红；其余任何二进制文件仍然判红。
+  它们由 `assets/gen/gen_art.py` 画出来，配色只取 `css/game.css` 的 token。
 - 63 关已烘焙并逐行复验，四档带的区间是从实测 `par` 直方图里定的：默认台架 1 360 次抽样 / 1 006 道题
   （本次复现值；`decant` 被 `TIER_MS` 截断的那一跑是 1 280 次抽样 / 926 道题，两个都是**抽样数**口径），
   按规格 `pour.md §3` 的"5000 题"口径放大到 7 310 次抽样 / 5 438 道题再量一遍，三档低难度的
@@ -32,7 +32,7 @@
 
 ```bash
 node server.cjs            # http://127.0.0.1:5180/（ES module 需要一个 origin，file:// 会被 CORS 挡掉）
-npm run unit               # 八个 node 套件：85 行断言、880 条 eq/ok
+npm run unit               # 九个 node 套件：97 行断言、5 091 条 eq/ok
 npm run doctest            # 文档里每条「文件:行号」读回来对账（见下「文档行号对账」一节；也在 npm test 的链里）
 bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标拖动验收（131 行断言）
 node test/balance.mjs      # 生成器实测：接受率、逐档拒绝原因、最大状态数（本机实测 20.5 秒；已接进 ci.yml 的 unit job 与 tools/verify.sh，本地与 CI 同一条命令）
@@ -127,9 +127,9 @@ totals 于是写成 1 280 / 926。**两个数都是抽样次数（drawn），不
 
 ```
 index.html            壳：顶栏 / 画布 / 右侧面板 / 通关卡（favicon 指向 icons/ 下那张真 PNG，不再是 data: 空壳）
-manifest.webmanifest  PWA 清单：start_url/scope 都相对，五张图标全是 icons/ 下的真实文件（180/192/192 maskable/512/512 maskable）
-sw.js                 离线壳：一律网络优先，命中才回填缓存；PRECACHE 收壳与那八张图标
-icons/                八张安装图标（PNG，tools/make-icons.py 画的）：favicon 16/32、apple-touch 180、192、maskable 192/512、512
+manifest.webmanifest  PWA 清单：start_url/scope 都相对，六张图标全是 icons/ 下的真实文件（64/96/192/512/1024 + maskable 512）
+sw.js                 离线壳：一律网络优先，命中才回填缓存；PRECACHE 只收壳与清单，图标首次联网时回填
+icons/                十张安装图标（PNG，assets/gen/gen_art.py 画的）：favicon 16/32/48、apple-touch 180、64/96/192/512/1024、maskable 512
 css/game.css          全部样式，一个文件
 js/core/jug.js        模型：三种动作、混合进制编码、后继枚举、规格校验、状态空间门槛（无 DOM）
 js/core/theorem.js    数论判据：gcd / gcdAll / canMeasureAny / canMeasureAt / reachableAmounts
@@ -148,7 +148,7 @@ tools/assemble-site.sh 上线文件的唯一清单：pages.yml 与本地闸都�
 tools/deploy-set.mjs  对拷出来的产物提要求     tools/deploy-set-selftest.mjs  逐刀证明它会红
 tools/playtest.mjs    零依赖 CDP 驱动，真实鼠标键盘事件      tools/verify.sh  一次性验收门
 tools/harness.mjs     微型测试框架，node 与浏览器套件输出形状一致
-test/                 八个套件 + 手算 fixture.mjs + 难度台架 balance.mjs
+test/                 九个套件 + 手算 fixture.mjs + 难度台架 balance.mjs
 ```
 
 ## 已知边界
@@ -202,7 +202,7 @@ test/                 八个套件 + 手算 fixture.mjs + 难度台架 balance.m
 - 它只证明印在纸上的行号还坐在它所描述的那几行上，不证明周围的句子。
 - 一条引用漂到隔壁、而隔壁恰好也含有那个名字，它看不出来——范围与锚点两半都过，这一格仍然绿。
 - 没带指认的引用只查"文件在不在、行号在不在界内、那几行是不是整段空白"，不查内容对不对得上。
-- 文档里其余的数字（node 层 85 行 / 880 条、浏览器层 131 行、四档 `par` 边界、`bake` 的秒数）不在它
+- 文档里其余的数字（node 层 97 行 / 5 091 条、浏览器层 131 行、四档 `par` 边界、`bake` 的秒数）不在它
   管辖范围内：那些由各套件的等式闸与台架看着，这一腿不替它们担保。
 - 交付报告里对建仓输入（`BUILDER.md` / `DELIVERABLE-TEMPLATE.md`）的行号引用不在本腿管辖：那两份文件
   不在本仓、也不在任何兄弟仓的 checkout 里，所以那句话写成了不承诺可解析的形式，而不是删掉。
@@ -240,6 +240,8 @@ MIT © 2026 z-biz-game
 `cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
 `manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
 真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
+
+线上前缀是 `https://z-biz-game.github.io/z-biz-game-pour-cos/`（`og:image` 用它的绝对地址）。
 
 现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
 然后**对拷出来的产物**提要求（`tools/deploy-set.mjs`）：

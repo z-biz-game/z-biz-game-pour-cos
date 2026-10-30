@@ -18,6 +18,14 @@ set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 CDP_PORT=${CDP_PORT:-9341}; if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then echo ":$CDP_PORT is already LISTENING — a sibling gate or an orphan Chrome holds it; attaching there reads someone else's browser. Wait for it to finish, or rerun with CDP_PORT=<a free port>." >&2; lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >&2 || true; exit 6; fi  # 一机一台：撞在同一个默认口上时不报错的是 Chrome，报错的是绿——先让路再开闸
 WEB_PORT=${WEB_PORT:-5190}
+# 同一条理由也管页面这一侧：5190 上若是别人的 server，`server.cjs` 会 EADDRINUSE 退出，
+# 而下面的轮询会对着**别人的页面**答 200，整轮验收于是测的是别的仓（本仓实测撞到过一台
+# Tauri 打包产物：@boot 报 window.pour 不存在，读起来像游戏坏了）。占着就先让路。
+if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo ":$WEB_PORT is already LISTENING — another server holds it; the browser would be driven against that page, not this repo's. Wait for it to finish, or rerun with WEB_PORT=<a free port>." >&2
+  lsof -nP -iTCP:"$WEB_PORT" -sTCP:LISTEN >&2 || true
+  exit 6
+fi
 BASE=${BASE_URL:-http://127.0.0.1:$WEB_PORT/}
 SHOT_DIR=${SHOT_DIR:-/tmp}
 CHROME=${CHROME_BIN:-}
@@ -65,6 +73,10 @@ for i in $(seq 1 40); do
 done
 curl -fsS -m 2 "$BASE" >/dev/null 2>&1 || {
   echo "static server never answered on $BASE" >&2; exit 4; }
+# 端口空着也不能证明答话的是本仓：绑定前抢进来的进程同样会答 200。标题是页面自己的身份证，
+# 读不到就退出，别把"别人的页"当成本仓的失败去修。
+curl -fsS -m 2 "$BASE" | grep -q '<title>倒水量' || {
+  echo "$BASE 回的不是倒水量的页面（<title> 里没有本仓标题）：拒绝在来路不明的页面上验收" >&2; exit 4; }
 
 cd "$HERE"
 FAILED=0

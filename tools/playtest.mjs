@@ -217,6 +217,12 @@ async function pointerScenario(cdp, sessionId, runJS) {
 
   await runJS(`window.pour.load('#/c/1'); 'ok'`);
   await sleep(320);
+  // 首次进入会弹教学遮罩（`if (!userPrefs.taught) openTutorial()`）。遮罩是**真的**盖在画布上，
+  // 所以第一笔真实按下会落在遮罩上（点遮罩＝关闭），这一笔于是被吞掉，拖拽状态从头到尾是 null。
+  // 这是台架绕过了「开始量水」那一步的账，不是游戏坏了：先显式关掉，再开始量几何。
+  const taught = await runJS('window.pour.hideTutorial() ? true : document.getElementById("tutorial").hidden');
+  if (!taught) throw new Error('teaching overlay would not close; the first gesture would be swallowed');
+  await sleep(60);
 
   const ids = ['bench', 'undo', 'hint', 'restart', 'share', 'curtain', 'stars', 'verdict', 'tally',
     'shelf', 'wipe', 'next', 'again', 'readout', 'theorem', 'log', 'caps', 'totals', 'crumbs', 'hintline', 'linkline', 'modes'];
